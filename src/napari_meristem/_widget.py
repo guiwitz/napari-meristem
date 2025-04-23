@@ -24,9 +24,9 @@ class MeristemWidget(QWidget):
         self.main_layout = QVBoxLayout()
         self.setLayout(self.main_layout)
 
-        self.tab_names = ['Data preproc', 'Stitch & Warp']
+        self.tab_names = ['Data preproc', 'Stitch & Warp', 'Selection']
         self.tabs = TabSet(self.tab_names,
-                           tab_layouts=[QVBoxLayout(), QVBoxLayout()])
+                           tab_layouts=[QVBoxLayout(), QVBoxLayout(), QVBoxLayout()])
         
         self.main_layout.addWidget(self.tabs)
 
@@ -184,6 +184,27 @@ class MeristemWidget(QWidget):
         self.warp_group.glayout.addWidget(self.btn_warp,3, 0, 1, 2)
         self.btn_warp.setToolTip("Warp the images to the selected reference points")
         
+        self.btn_load_warped = QPushButton("Load warped data")
+        self.warp_group.glayout.addWidget(self.btn_load_warped, 4, 0, 1, 2)
+        self.btn_load_warped.setToolTip("Load warped data from the selected folder")
+
+        # Selection group
+        self.selection_group = VHGroup('Selection', orientation='G')
+        self.tabs.add_named_tab('Selection', self.selection_group.gbox)
+        self.btn_select_mask = QPushButton("Add selection mask")
+        self.selection_group.glayout.addWidget(self.btn_select_mask, 0, 0, 1, 2)
+        self.btn_select_mask.setToolTip("Add a selection mask to the image")
+
+        self.btn_export_selection_mask = QPushButton("Export selection mask")
+        self.selection_group.glayout.addWidget(self.btn_export_selection_mask, 1, 0, 1, 2)
+        self.btn_export_selection_mask.setToolTip("Export annotated mask")
+        
+        self.btn_load_selection_mask = QPushButton("Load selection mask")
+        self.selection_group.glayout.addWidget(self.btn_load_selection_mask, 2, 0, 1, 2)
+        self.btn_load_selection_mask.setToolTip("Load annotated mask")
+        self.btn_match_selected_indice_on_stitch = QPushButton("Match selected indices")
+        self.selection_group.glayout.addWidget(self.btn_match_selected_indice_on_stitch, 3, 0, 1, 2)
+        self.btn_match_selected_indice_on_stitch.setToolTip("Match selected indices on stitched image")
         
         self._add_connections()
 
@@ -207,6 +228,11 @@ class MeristemWidget(QWidget):
         self.btn_compute_single_mask.clicked.connect(self._on_compute_single_mask)
         self.btn_compute_all_masks.clicked.connect(self._on_compute_all_masks)
         self.btn_warp.clicked.connect(self.warp)
+        self.btn_load_warped.clicked.connect(self._on_load_warped_data)
+        self.btn_select_mask.clicked.connect(self._on_add_selection_mask)
+        self.btn_export_selection_mask.clicked.connect(self._on_export_selection_mask)
+        self.btn_match_selected_indice_on_stitch.clicked.connect(self._on_match_selected_indice_on_stitch)
+        self.btn_load_selection_mask.clicked.connect(self._on_load_selection_mask)
 
     def _on_load_data(self):
         
@@ -227,8 +253,8 @@ class MeristemWidget(QWidget):
         self.images_assembled_c = preprocess.crop_images(images_assembled)
         self.masks_assembled_c = preprocess.crop_images(masks_assembled)
 
-        self.viewer.add_image(np.stack(self.images_assembled_c, axis=0))
-        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(int))
+        self.viewer.add_image(np.stack(self.images_assembled_c, axis=0), name='stitched_image', colormap='gray', blending='additive')
+        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(int), name='stitched_mask')
         self.viewer.add_points(name='match_points',ndim=3)
 
     def _on_load_assemble_single(self):
@@ -410,3 +436,52 @@ class MeristemWidget(QWidget):
         preprocess.save_warped_stacks(export_folder=export_folder, warped_image_list=warp_series, warped_mask_list=warp_mask_series)
         self.viewer.add_image(np.stack(warp_series, axis=0)) 
         self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(int)) 
+
+    def _on_load_warped_data(self):
+
+        export_folder = Path(self.widget_export_directory.value)
+        images_warped, masks_warped = preprocess.import_warped_images(export_folder)
+        self.viewer.add_image(images_warped, name='warped_image', colormap='gray', blending='additive')
+        self.viewer.add_labels(masks_warped.astype(int), name='warped_mask')
+
+    def _on_add_selection_mask(self):
+        
+        cellmask = np.zeros_like(self.viewer.layers['warped_mask'].data, dtype=np.uint16)
+        self.viewer.add_labels(cellmask, name='selection_mask')
+
+    def _on_export_selection_mask(self):
+        cellmask = self.viewer.layers['selection_mask'].data
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath('selection_mask.tif'), cellmask.astype(np.uint16))
+
+    def _on_load_selection_mask(self):
+        cellmask = skimage.io.imread(Path(self.widget_export_directory.value).joinpath('selection_mask.tif'))
+        self.viewer.add_labels(cellmask, name='selection_mask')
+
+    def _on_match_selected_indice_on_stitch(self):
+        
+        if 'selection_mask' not in self.viewer.layers:
+            QMessageBox.critical(self, "Error", "Please add a selection mask first")
+            return
+        if 'stiched_mask' not in self.viewer.layers:
+            self._on_load_assembled_data()
+        if 'warped_mask' not in self.viewer.layers:
+            self._on_load_warped_data()
+        
+        # get indices covered by annotions in the warped image
+        cellmask = self.viewer.layers['selection_mask'].data
+        mask_warped = self.viewer.layers['warped_mask'].data
+        mask_stitched = self.viewer.layers['stitched_mask'].data
+
+        selected_cells_warped = np.zeros_like(cellmask, dtype=np.uint16)
+        selected_cells_stitched = np.zeros_like(mask_stitched, dtype=np.uint16)
+
+        for i in range(mask_warped.shape[0]):
+            cell_indices = mask_warped[i][cellmask[i] > 0]
+            indices = np.unique(cell_indices)
+
+            for j in indices:
+                selected_cells_warped[i][mask_warped[i] == j] = j
+                selected_cells_stitched[i][mask_stitched[i] == j] = j
+
+        self.viewer.add_labels(selected_cells_stitched, name='selected_cells_stitched')
+        self.viewer.add_labels(selected_cells_warped, name='selected_cells_warped')
