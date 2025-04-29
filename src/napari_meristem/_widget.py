@@ -44,6 +44,9 @@ class MeristemWidget(QWidget):
         self.data_selection_group.glayout.addWidget(self.btn_load_data, 3, 0, 1, 2)
         self.btn_load_data.setToolTip("Load data from the selected folder")
 
+        self.data_selection_group.gbox.setMaximumHeight(self.data_selection_group.gbox.sizeHint().height())
+
+
         # Days group
         self.days_group = VHGroup('Days', orientation='G')
         self.tabs.add_named_tab('Data preproc', self.days_group.gbox)
@@ -63,6 +66,8 @@ class MeristemWidget(QWidget):
         self.spinbox_max_days.setPrefix("Max days: ")
         self.days_group.glayout.addWidget(self.spinbox_max_days, 1, 0, 1, 2)
 
+        self.days_group.gbox.setMaximumHeight(self.days_group.gbox.sizeHint().height())
+
         # Project group
         self.project_stitch_group = VHGroup('Project', orientation='G')
         self.tabs.add_named_tab('Data preproc', self.project_stitch_group.gbox)
@@ -79,6 +84,7 @@ class MeristemWidget(QWidget):
         self.btn_load_proj_single_day.setToolTip("Load single projected time point")
         self.project_stitch_group.glayout.addWidget(self.btn_load_proj_single_day, 3, 0, 1, 2)
 
+        self.project_stitch_group.gbox.setMaximumHeight(self.project_stitch_group.gbox.sizeHint().height())
 
         # Stitch group
         self.arrange_group = VHGroup('Stitch', orientation='G')
@@ -150,6 +156,7 @@ class MeristemWidget(QWidget):
         self.arrange_group.glayout.addWidget(self.btn_load_assembled_single, 6, 1, 1, 1)
         self.btn_load_assembled_single.setToolTip("Load assembled data for single time")
 
+        self.arrange_group.gbox.setMaximumHeight(self.arrange_group.gbox.sizeHint().height())
 
         # mask group
         self.mask_group = VHGroup('Mask', orientation='G')
@@ -167,6 +174,8 @@ class MeristemWidget(QWidget):
         self.spinbox_diameter.setSingleStep(1)
         self.spinbox_diameter.setPrefix("Diameter: ")
         self.mask_group.glayout.addWidget(self.spinbox_diameter, 2, 0, 1, 2)
+
+        self.mask_group.gbox.setMaximumHeight(self.mask_group.gbox.sizeHint().height())
 
         # Warp group
         self.warp_group = VHGroup('Warp', orientation='G')
@@ -188,6 +197,8 @@ class MeristemWidget(QWidget):
         self.warp_group.glayout.addWidget(self.btn_load_warped, 4, 0, 1, 2)
         self.btn_load_warped.setToolTip("Load warped data from the selected folder")
 
+        self.warp_group.gbox.setMaximumHeight(self.warp_group.gbox.sizeHint().height())
+
         # Selection group
         self.selection_group = VHGroup('Selection', orientation='G')
         self.tabs.add_named_tab('Selection', self.selection_group.gbox)
@@ -205,6 +216,13 @@ class MeristemWidget(QWidget):
         self.btn_match_selected_indice_on_stitch = QPushButton("Match selected indices")
         self.selection_group.glayout.addWidget(self.btn_match_selected_indice_on_stitch, 3, 0, 1, 2)
         self.btn_match_selected_indice_on_stitch.setToolTip("Match selected indices on stitched image")
+
+        self.btn_track = QPushButton("Track")
+        self.selection_group.glayout.addWidget(self.btn_track, 4, 0, 1, 2)
+        self.btn_track.setToolTip("Track the selected indices")
+
+        self.selection_group.gbox.setMaximumHeight(self.selection_group.gbox.sizeHint().height())
+
         
         self._add_connections()
 
@@ -215,7 +233,7 @@ class MeristemWidget(QWidget):
         self.btn_all_projection.clicked.connect(self._on_project_advanced)
         self.btn_load_proj_single_day.clicked.connect(self._on_load_projection_single)
         self.btn_shift.clicked.connect(self._on_shift)
-        self.btn_shift_template.clicked.connect(self._on_shift)
+        self.btn_shift_template.clicked.connect(self._on_shift_template)
         self.btn_save_shifts.clicked.connect(self._on_save_shifts)
         self.btn_load_shifts.clicked.connect(self._on_load_shifts)
         self.btn_stitch_single_time.clicked.connect(self._on_stitch_single)
@@ -233,6 +251,7 @@ class MeristemWidget(QWidget):
         self.btn_export_selection_mask.clicked.connect(self._on_export_selection_mask)
         self.btn_match_selected_indice_on_stitch.clicked.connect(self._on_match_selected_indice_on_stitch)
         self.btn_load_selection_mask.clicked.connect(self._on_load_selection_mask)
+        self.btn_track.clicked.connect(self._on_track)
 
     def _on_load_data(self):
         
@@ -321,6 +340,12 @@ class MeristemWidget(QWidget):
             [im_height, im_width],
             [0, im_width],
         ]
+
+        index = [x.value() for x in self.arrangement_boxes]
+        for i in range(4):
+            shift = shifts[i]
+            self.viewer.layers[f"pos{index[i]}"].affine.translate = shift
+            self.viewer.layers[f"pos{index[i]}"].refresh()
 
     def _on_shift_template(self):
 
@@ -485,3 +510,39 @@ class MeristemWidget(QWidget):
 
         self.viewer.add_labels(selected_cells_stitched, name='selected_cells_stitched')
         self.viewer.add_labels(selected_cells_warped, name='selected_cells_warped')
+
+    def _on_track(self):
+        from trackastra.model import Trackastra
+        from trackastra.tracking import graph_to_ctc, graph_to_napari_tracks
+
+        model = Trackastra.from_pretrained("general_2d", device='cpu')
+        track_graph = model.track(imgs=self.viewer.layers['warped_image'].data,
+                                  masks=self.viewer.layers['selected_cells_warped'].data, mode="greedy")  # or mode="ilp", or "greedy_nodiv"
+        
+        outdir = Path(self.widget_export_directory.value).joinpath('tracked')
+        if not outdir.exists():
+            outdir.mkdir(parents=True, exist_ok=True)
+        ctc_tracks, masks_tracked = graph_to_ctc(
+            track_graph,
+            self.viewer.layers['selected_cells_warped'].data,
+            outdir=outdir
+            )
+        
+        napari_tracks, napari_tracks_graph, _ = graph_to_napari_tracks(track_graph)
+        self.viewer.add_labels(masks_tracked)
+        self.viewer.add_tracks(data=napari_tracks, graph=napari_tracks_graph)
+
+        # create tracked mask of unwarped images
+        masks_tracked = self.viewer.layers['masks_tracked'].data
+        new_mask = np.zeros_like(masks_tracked)
+        stitched_mask = self.viewer.layers['stitched_mask'].data
+        warped_mask = self.viewer.layers['warped_mask'].data
+
+        for i in np.unique(masks_tracked[masks_tracked > 0]):#[0:1]:
+            for t in range(masks_tracked.shape[0]):
+                original_ids = warped_mask[t][masks_tracked[t] == i]
+                original_ids = np.unique(original_ids)
+                for j in original_ids:
+                    new_mask[t][stitched_mask[t] == j] = i
+        
+        self.viewer.add_labels(new_mask, name='masks_stitched_tracked')
