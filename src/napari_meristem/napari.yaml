@@ -6,29 +6,9 @@ visibility: public
 categories: ["Annotation", "Segmentation", "Acquisition"]
 contributions:
   commands:
-    - id: napari-meristem.get_reader
-      python_name: napari_meristem._reader:napari_get_reader
-      title: Open data with Meristem
-    - id: napari-meristem.write_multiple
-      python_name: napari_meristem._writer:write_multiple
-      title: Save multi-layer data with Meristem
-    - id: napari-meristem.write_single_image
-      python_name: napari_meristem._writer:write_single_image
-      title: Save image data with Meristem
     - id: napari-meristem.make_meristem_widget
       python_name: napari_meristem:MeristemWidget
       title: Meristem QWidget
-  readers:
-    - command: napari-meristem.get_reader
-      accepts_directories: false
-      filename_patterns: ['*.npy']
-  writers:
-    - command: napari-meristem.write_multiple
-      layer_types: ['image*','labels*']
-      filename_extensions: []
-    - command: napari-meristem.write_single_image
-      layer_types: ['image']
-      filename_extensions: ['.npy']
   widgets:
     - command: napari-meristem.make_meristem_widget
       display_name: Meristem QWidget

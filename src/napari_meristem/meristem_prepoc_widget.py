@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import napari
 from natsort import natsorted
 import skimage
 import numpy as np
@@ -11,7 +11,7 @@ from qtpy.QtWidgets import (QVBoxLayout, QTabWidget, QPushButton,
 from napari_guitils.gui_structures import VHGroup, TabSet
 from magicgui.widgets import create_widget
 
-from meristem_track import preprocess 
+from . import preprocess
 
 
 class MeristemWidget(QWidget):
@@ -34,10 +34,10 @@ class MeristemWidget(QWidget):
         self.data_selection_group = VHGroup('Data', orientation='G')
         self.tabs.add_named_tab('Data preproc', self.data_selection_group.gbox)
 
-        self.widget_data_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose a directory"})
+        self.widget_data_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose data directory"})
         self.data_selection_group.glayout.addWidget(self.widget_data_directory.native, 0, 0, 1, 2)
 
-        self.widget_export_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose a directory"})
+        self.widget_export_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose export directory"})
         self.data_selection_group.glayout.addWidget(self.widget_export_directory.native, 1, 0, 1, 2)
 
         self.btn_load_data = QPushButton("Load data")
