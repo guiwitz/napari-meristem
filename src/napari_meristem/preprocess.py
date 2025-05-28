@@ -307,10 +307,17 @@ def run_workflow(image_series, index_order, max_days=None, cle=False, y_dir=1, t
 
 def compute_mask_single_time(image, diameter=40):
 
+    """
     model = models.Cellpose(gpu=True, model_type="cyto3")
     masks_pred, flows, styles, diams = model.eval(image, diameter=diameter, channels=[0,0],
                                                 niter=2000, invert=False, cellprob_threshold=-6,
                                                 flow_threshold=0)
+    """
+    model = models.CellposeModel(gpu=True)
+    masks_pred, _, _, = model.eval(image, diameter=40,
+                                     niter=2000, invert=False,
+                                     cellprob_threshold=-6, flow_threshold=0)
+    
     return masks_pred
 
 def import_assembled_images(folder):
@@ -397,10 +404,29 @@ def warp_full_stack(image_list, ref_points):
 
     return full_warp, tps_series
 
-def wark_stack_with_transform(image_list, tps_list, image_type='mask'):
+def get_tps_series(ref_points):
+    """Get a list of TPS transforms for each time step based on reference points."""
+
+    tps_series = []
+    max_time = int(np.max(ref_points[:,0]))
+    for i in range(max_time):
+        src = ref_points[ref_points[:,0] == i][:,1:3]
+        dst = ref_points[ref_points[:,0] == i+1][:,1:3]
+    
+    
+        src = np.fliplr(src)
+        dst = np.fliplr(dst)
+
+        tps = skimage.transform.ThinPlateSplineTransform()
+        tps.estimate(dst, src)
+        tps_series.append(tps)
+
+    return tps_series
+
+def warp_stack_with_transform(image_list, tps_list, image_type='mask'):
 
     preserve_range = False
-    oder = 1
+    order = 1
     if image_type == 'mask':
         preserve_range=True
         order = 0
@@ -415,6 +441,21 @@ def wark_stack_with_transform(image_list, tps_list, image_type='mask'):
     full_warp.append(image_list[-1])
 
     return full_warp
+
+def warp_single_time(image, tps_list, time, image_type='mask'):
+    """Warp a single image using a list of TPS transforms."""
+    
+    preserve_range = False
+    order = 1
+    if image_type == 'mask':
+        preserve_range=True
+        order = 0
+    
+    warped = image
+    for j in range(time,len(tps_list)):
+        warped = skimage.transform.warp(warped, tps_list[j], preserve_range=preserve_range, order=order)
+
+    return warped
 
 def save_assembled_data(export_folder, assembled_images=None, assembled_masks=None, days=None):
 

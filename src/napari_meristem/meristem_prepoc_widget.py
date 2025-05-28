@@ -10,6 +10,9 @@ from qtpy.QtWidgets import (QVBoxLayout, QTabWidget, QPushButton,
                             QMessageBox, QSpinBox)
 from napari_guitils.gui_structures import VHGroup, TabSet
 from magicgui.widgets import create_widget
+from trackastra.model import Trackastra
+from trackastra.tracking import graph_to_ctc, graph_to_napari_tracks
+
 
 from . import preprocess
 
@@ -221,6 +224,13 @@ class MeristemWidget(QWidget):
         self.selection_group.glayout.addWidget(self.btn_track, 4, 0, 1, 2)
         self.btn_track.setToolTip("Track the selected indices")
 
+        self.manual_fix_group = VHGroup('Manual fix', orientation='G')
+        self.tabs.add_named_tab('Selection', self.manual_fix_group.gbox)
+        self.btn_update_mask = QPushButton("Update mask")
+        self.manual_fix_group.glayout.addWidget(self.btn_update_mask, 0, 0, 1, 2)
+        self.btn_update_mask.setToolTip("Update the mask given manual splits and merges")
+
+
         self.selection_group.gbox.setMaximumHeight(self.selection_group.gbox.sizeHint().height())
 
         
@@ -252,6 +262,7 @@ class MeristemWidget(QWidget):
         self.btn_match_selected_indice_on_stitch.clicked.connect(self._on_match_selected_indice_on_stitch)
         self.btn_load_selection_mask.clicked.connect(self._on_load_selection_mask)
         self.btn_track.clicked.connect(self._on_track)
+        self.btn_update_mask.clicked.connect(self._on_update_after_manual_fix)
 
     def _on_load_data(self):
         
@@ -273,7 +284,7 @@ class MeristemWidget(QWidget):
         self.masks_assembled_c = preprocess.crop_images(masks_assembled)
 
         self.viewer.add_image(np.stack(self.images_assembled_c, axis=0), name='stitched_image', colormap='gray', blending='additive')
-        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(int), name='stitched_mask')
+        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(np.uint16), name='stitched_mask')
         self.viewer.add_points(name='match_points',ndim=3)
 
     def _on_load_assemble_single(self):
@@ -389,7 +400,7 @@ class MeristemWidget(QWidget):
             self.viewer.layers[f"stitched_mask_d{day}"].data = mask.astype(int)
             self.viewer.layers[f"stitched_mask_d{day}"].refresh()
         else:
-            self.viewer.add_labels(mask.astype(int), name=f"stitched_mask_d{day}")
+            self.viewer.add_labels(mask.astype(np.uint16), name=f"stitched_mask_d{day}")
         skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif'), mask)
 
     def _on_compute_all_masks(self):
@@ -453,21 +464,31 @@ class MeristemWidget(QWidget):
 
     def warp(self):
 
+        if 'match_points' not in self.viewer.layers:
+            QMessageBox.critical(self, "Error", "Please add reference points first")
+            return
+        if len(self.viewer.layers['match_points'].data) < 4:
+            QMessageBox.critical(self, "Error", "Please add at least 4 reference points")
+            return
+        
         self._on_save_ref_points()
         export_folder = Path(self.widget_export_directory.value)
-        warp_series, tps_series = preprocess.warp_full_stack(image_list=self.images_assembled_c, ref_points=self.ref_points)
-        warp_mask_series = preprocess.wark_stack_with_transform(self.masks_assembled_c, tps_series)
+        warp_series, self.tps_series = preprocess.warp_full_stack(image_list=self.images_assembled_c, ref_points=self.ref_points)
+        warp_mask_series = preprocess.warp_stack_with_transform(self.masks_assembled_c, self.tps_series)
 
         preprocess.save_warped_stacks(export_folder=export_folder, warped_image_list=warp_series, warped_mask_list=warp_mask_series)
         self.viewer.add_image(np.stack(warp_series, axis=0)) 
-        self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(int)) 
+        self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(np.uint16), name='warped_mask') 
+        self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
+
 
     def _on_load_warped_data(self):
 
         export_folder = Path(self.widget_export_directory.value)
         images_warped, masks_warped = preprocess.import_warped_images(export_folder)
         self.viewer.add_image(images_warped, name='warped_image', colormap='gray', blending='additive')
-        self.viewer.add_labels(masks_warped.astype(int), name='warped_mask')
+        self.viewer.add_labels(masks_warped.astype(np.uint16), name='warped_mask')
+        self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
 
     def _on_add_selection_mask(self):
         
@@ -512,9 +533,7 @@ class MeristemWidget(QWidget):
         self.viewer.add_labels(selected_cells_warped, name='selected_cells_warped')
 
     def _on_track(self):
-        from trackastra.model import Trackastra
-        from trackastra.tracking import graph_to_ctc, graph_to_napari_tracks
-
+    
         model = Trackastra.from_pretrained("general_2d", device='cpu')
         track_graph = model.track(imgs=self.viewer.layers['warped_image'].data,
                                   masks=self.viewer.layers['selected_cells_warped'].data, mode="greedy")  # or mode="ilp", or "greedy_nodiv"
@@ -546,3 +565,44 @@ class MeristemWidget(QWidget):
                     new_mask[t][stitched_mask[t] == j] = i
         
         self.viewer.add_labels(new_mask, name='masks_stitched_tracked')
+
+    def _on_select_warped_label(self, event):
+        print('on_select_warped_label')
+        selected_label = self.viewer.layers['warped_mask'].selected_label
+        fix_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0], dtype=np.uint16)
+        t = self.viewer.dims.current_step[0]
+        fix_mask[self.viewer.layers['stitched_mask'].data[t] == selected_label] = 1
+        if 'fix_mask' in self.viewer.layers:
+            self.viewer.layers['fix_mask'].data = fix_mask
+            self.viewer.layers['fix_mask'].refresh()
+        else:
+            self.viewer.add_labels(fix_mask, name='fix_mask')
+        
+        #self.viewer.layers['stitched_mask'].show_selected_label = True
+        #self.viewer.layers['stitched_mask'].selected_label = selected_label
+        #self.viewer.layers['stitched_mask'].preserve_labels = True
+        self.viewer.layers['fix_mask'].mode = 'erase'
+        self.viewer.layers['fix_mask'].brush_size = 2 
+        self.viewer.layers['fix_mask'].refresh()
+
+    def _on_update_after_manual_fix(self):
+
+        original_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0])
+        sel_label = self.viewer.layers['warped_mask'].selected_label
+        current_mask = self.viewer.layers['stitched_mask'].data[self.viewer.dims.current_step[0]]
+        original_mask[current_mask == sel_label] = 1
+
+        replace_mask = self.viewer.layers['fix_mask'].data
+        replace_mask = skimage.measure.label(replace_mask).astype(np.uint16)
+        replace_mask = skimage.segmentation.expand_labels(replace_mask, distance=10)
+        replace_mask = replace_mask * original_mask
+        
+        replace_mask[replace_mask > 0] = replace_mask[replace_mask > 0] + current_mask.max()
+        current_mask[replace_mask > 0] = replace_mask[replace_mask > 0]
+
+        self._on_load_ref_points()
+        tps_series = preprocess.get_tps_series(ref_points=self.ref_points)
+
+        warped_update = preprocess.warp_single_time(current_mask, tps_series, time=self.viewer.dims.current_step[0], image_type='mask')
+        self.viewer.layers['warped_mask'].data[self.viewer.dims.current_step[0]] = warped_update
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
