@@ -202,6 +202,13 @@ class MeristemWidget(QWidget):
 
         self.warp_group.gbox.setMaximumHeight(self.warp_group.gbox.sizeHint().height())
 
+        # Options group
+        self.options_group = VHGroup('Options', orientation='G')
+        self.tabs.add_named_tab('Stitch & Warp', self.options_group.gbox)
+        self.manual_option = create_widget(value=False, options={"label": "Manual stitching"})
+        self.options_group.glayout.addWidget(self.manual_option.native, 0, 0, 1, 2)
+        self.options_group.gbox.setMaximumHeight(self.options_group.gbox.sizeHint().height())
+
         # Selection group
         self.selection_group = VHGroup('Selection', orientation='G')
         self.tabs.add_named_tab('Selection', self.selection_group.gbox)
@@ -226,9 +233,15 @@ class MeristemWidget(QWidget):
 
         self.manual_fix_group = VHGroup('Manual fix', orientation='G')
         self.tabs.add_named_tab('Selection', self.manual_fix_group.gbox)
-        self.btn_update_mask = QPushButton("Update mask")
-        self.manual_fix_group.glayout.addWidget(self.btn_update_mask, 0, 0, 1, 2)
-        self.btn_update_mask.setToolTip("Update the mask given manual splits and merges")
+        self.btn_init_manual_fix = QPushButton("Initialize manual fix")
+        self.manual_fix_group.glayout.addWidget(self.btn_init_manual_fix, 0, 0, 1, 2)
+        self.btn_init_manual_fix.setToolTip("Initialize manual fix for the selected label")
+        self.btn_update_mask = QPushButton("Update mask after split")
+        self.manual_fix_group.glayout.addWidget(self.btn_update_mask, 1, 0, 1, 2)
+        self.btn_update_mask.setToolTip("Update the mask given manual split")
+        self.btn_update_mask_merged = QPushButton("Update mask after merge")
+        self.manual_fix_group.glayout.addWidget(self.btn_update_mask_merged, 2, 0, 1, 2)
+        self.btn_update_mask_merged.setToolTip("Update the mask given manual merge")
 
 
         self.selection_group.gbox.setMaximumHeight(self.selection_group.gbox.sizeHint().height())
@@ -248,7 +261,7 @@ class MeristemWidget(QWidget):
         self.btn_load_shifts.clicked.connect(self._on_load_shifts)
         self.btn_stitch_single_time.clicked.connect(self._on_stitch_single)
         self.btn_save_single_stitch.clicked.connect(self.save_single_stitch)
-        self.btn_run_workflow.clicked.connect(self.on_run_workflow)
+        self.btn_run_workflow.clicked.connect(self.on_run_stitch)
         self.btn_load_assembled_data.clicked.connect(self._on_load_assembled_data)
         self.btn_load_assembled_single.clicked.connect(self._on_load_assemble_single)
         self.btn_save_ref_points.clicked.connect(self._on_save_ref_points)
@@ -262,7 +275,10 @@ class MeristemWidget(QWidget):
         self.btn_match_selected_indice_on_stitch.clicked.connect(self._on_match_selected_indice_on_stitch)
         self.btn_load_selection_mask.clicked.connect(self._on_load_selection_mask)
         self.btn_track.clicked.connect(self._on_track)
-        self.btn_update_mask.clicked.connect(self._on_update_after_manual_fix)
+        self.btn_init_manual_fix.clicked.connect(self._on_init_manual_fix)
+        self.btn_update_mask.clicked.connect(self._on_update_after_manual_split)
+        self.btn_update_mask_merged.clicked.connect(self._on_update_after_manual_merge)
+
 
     def _on_load_data(self):
         
@@ -277,14 +293,27 @@ class MeristemWidget(QWidget):
     def _on_load_assembled_data(self):
 
         export_folder = Path(self.widget_export_directory.value)
-        images_assembled, image_names = preprocess.import_assembled_images(export_folder)
+        '''images_assembled, image_names = preprocess.import_assembled_images(export_folder)
         masks_assembled, mask_names = preprocess.import_assembled_masks(export_folder)
 
         self.images_assembled_c = preprocess.crop_images(images_assembled)
         self.masks_assembled_c = preprocess.crop_images(masks_assembled)
 
         self.viewer.add_image(np.stack(self.images_assembled_c, axis=0), name='stitched_image', colormap='gray', blending='additive')
-        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(np.uint16), name='stitched_mask')
+        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(np.uint16), name='stitched_mask')'''
+
+        if self.manual_option.value:
+            prefix = 'manual_'
+        else:
+            prefix = ''
+
+        self.images_assembled_c = skimage.io.imread(export_folder.joinpath(f'{prefix}assembled_image_stack.tif'))
+        self.viewer.add_image(self.images_assembled_c, name='stitched_image', colormap='gray', blending='additive')
+
+        if export_folder.joinpath(f'{prefix}assembled_mask_stack.tif').exists():
+            self.masks_assembled_c = skimage.io.imread(export_folder.joinpath(f'{prefix}assembled_mask_stack.tif')).astype(np.uint16)
+            self.viewer.add_labels(self.masks_assembled_c, name='stitched_mask')
+
         self.viewer.add_points(name='match_points',ndim=3)
 
     def _on_load_assemble_single(self):
@@ -405,12 +434,17 @@ class MeristemWidget(QWidget):
 
     def _on_compute_all_masks(self):
         
-        days = np.arange(0, self.spinbox_max_days.value())
-        for day in days:
-            
+        masks=[]
+        image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath('assembled_image_stack.tif'))
+        for im in image:
+            masks.append(preprocess.compute_mask_single_time(image=im, diameter=self.spinbox_diameter.value()))
+        '''for day in days:
             image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif'))
-            mask = preprocess.compute_mask_single_time(image=image)
-            skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif'), mask)
+            masks.append(preprocess.compute_mask_single_time(image=image))'''
+        
+        skimage.io.imsave(
+            Path(self.widget_export_directory.value).joinpath(f'assembled_mask_stack.tif'),
+            np.stack(masks, axis=0).astype(np.uint16))
 
 
     def save_single_stitch(self):
@@ -431,24 +465,32 @@ class MeristemWidget(QWidget):
             self.shifts.append(self.viewer.layers[f"pos{i+1}"].affine.translate)
         self.shifts = [s - self.shifts[0] for s in self.shifts]
 
-    def on_run_workflow(self):
+    def on_run_stitch(self):
 
         #self.update_shifts()
         data_path = Path(self.widget_export_directory.value)
         pos = [1, 2, 3, 4]
         days = np.arange(0, self.spinbox_max_days.value())
         image_series = [[list(data_path.glob(f'{d}d_pos{p}_proj*'))[0] for p in pos] for d in days]
-        #translations = [{'y': self.shifts[i][0], 'x': self.shifts[i][1]} for i in range(4)]
         cle = True
 
         index = [x.value() for x in self.arrangement_boxes]
 
-        all_fused, all_masks = preprocess.run_workflow(
+        all_fused = preprocess.run_stitch(
             image_series, index_order=index, max_days=self.spinbox_max_days.value(),
             cle=cle, y_dir=1, translations=None, proj=False)
-        preprocess.save_assembled_data(
+        
+        all_fused = [np.squeeze(fused) for fused in all_fused]
+        all_fused = preprocess.crop_images(all_fused)
+        #all_masks = preprocess.crop_images(all_masks)
+
+        '''reprocess.save_assembled_data(
             export_folder=self.widget_export_directory.value, 
-            assembled_images=all_fused, assembled_masks=all_masks)
+            assembled_images=all_fused, assembled_masks=all_masks)'''
+        
+        preprocess.save_assembled_data_stack(
+            export_folder=Path(self.widget_export_directory.value), 
+            assembled_images=all_fused)
         
     def _on_save_ref_points(self):
         
@@ -513,7 +555,7 @@ class MeristemWidget(QWidget):
         if 'warped_mask' not in self.viewer.layers:
             self._on_load_warped_data()
         
-        # get indices covered by annotions in the warped image
+        # get indices covered by annotations in the warped image
         cellmask = self.viewer.layers['selection_mask'].data
         mask_warped = self.viewer.layers['warped_mask'].data
         mask_stitched = self.viewer.layers['stitched_mask'].data
@@ -567,25 +609,45 @@ class MeristemWidget(QWidget):
         self.viewer.add_labels(new_mask, name='masks_stitched_tracked')
 
     def _on_select_warped_label(self, event):
-        print('on_select_warped_label')
+        
         selected_label = self.viewer.layers['warped_mask'].selected_label
         fix_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0], dtype=np.uint16)
         t = self.viewer.dims.current_step[0]
         fix_mask[self.viewer.layers['stitched_mask'].data[t] == selected_label] = 1
+        
+        self._reset_fix_mask(mask=fix_mask)
+        
+
+    def _on_init_manual_fix(self):
+        if 'warped_mask' not in self.viewer.layers:
+            self._on_load_warped_data()
+        if 'stitched_mask' not in self.viewer.layers:
+            self._on_load_assembled_data()
+        
+        self._reset_fix_mask()
+
+    def _reset_fix_mask(self, mask=None):
+
+        if 'stitched_mask' not in self.viewer.layers:
+            QMessageBox.critical(self, "Error", "Please load stitched mask first")
+            return
+        
+        if mask is None:
+            fix_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0], dtype=np.uint16)
+        else:
+            fix_mask = mask
+
         if 'fix_mask' in self.viewer.layers:
             self.viewer.layers['fix_mask'].data = fix_mask
             self.viewer.layers['fix_mask'].refresh()
         else:
             self.viewer.add_labels(fix_mask, name='fix_mask')
-        
-        #self.viewer.layers['stitched_mask'].show_selected_label = True
-        #self.viewer.layers['stitched_mask'].selected_label = selected_label
-        #self.viewer.layers['stitched_mask'].preserve_labels = True
+
         self.viewer.layers['fix_mask'].mode = 'erase'
         self.viewer.layers['fix_mask'].brush_size = 2 
         self.viewer.layers['fix_mask'].refresh()
 
-    def _on_update_after_manual_fix(self):
+    def _on_update_after_manual_split(self):
 
         original_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0])
         sel_label = self.viewer.layers['warped_mask'].selected_label
@@ -605,4 +667,23 @@ class MeristemWidget(QWidget):
 
         warped_update = preprocess.warp_single_time(current_mask, tps_series, time=self.viewer.dims.current_step[0], image_type='mask')
         self.viewer.layers['warped_mask'].data[self.viewer.dims.current_step[0]] = warped_update
-        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
+
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'man_warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'man_assembled_mask_stack.tif'), self.viewer.layers['stiched_mask'].data)
+
+    def _on_update_after_manual_merge(self):
+
+        mask_t = self.viewer.layers['warped_mask'].data[self.viewer.dims.current_step[0]]
+        mask_stitched_t = self.viewer.layers['stitched_mask'].data[self.viewer.dims.current_step[0]]
+        to_merge = np.unique(mask_t[self.viewer.layers['fix_mask'].data > 0])
+        for lab in to_merge:
+            mask_t[mask_t == lab] = to_merge[0]
+            mask_stitched_t[mask_stitched_t == lab] = to_merge[0]
+        self.viewer.layers['warped_mask'].refresh()
+        self.viewer.layers['stitched_mask'].refresh()                                
+
+        self.viewer.layers['fix_mask'].data = np.zeros_like(self.viewer.layers['fix_mask'].data)
+        self.viewer.layers['fix_mask'].refresh()
+
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
+        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_stiched_mask.tif'), self.viewer.layers['stitched_mask'].data)
