@@ -272,38 +272,29 @@ def stitch_image(images, y_dir=1, translations=None):
 
     return fused
 
-def run_workflow(image_series, index_order, max_days=None, cle=False, y_dir=1, translations=None, proj=False):
+def run_stitch(image_series, index_order, max_days=None, cle=False, y_dir=1, translations=None, proj=False):
 
     if max_days is None:
         max_days = len(image_series)
 
-    model = models.Cellpose(gpu=True, model_type="cyto3")
     all_fused = []
-    all_masks = []
     for day in range(max_days):
         
         ims = [skimage.io.imread(p) for p in image_series[day]]
 
         if proj:
             ims = [create_proj(im, cle=cle) for im in ims]
-        else:
-            ims = ims
-
+    
         ims = [ims[index_order[i]-1] for i in range(len(index_order))]
 
         if translations is None:
             shifts = register_match_template(ims, template_width=100, template_fraction=0.3)
-            translations = [{'y': shifts[i][0], 'x': shifts[i][1]} for i in range(4)]
+            translate = [{'y': shifts[i][0], 'x': shifts[i][1]} for i in range(4)]
         
-        fused = stitch_image(images=ims, y_dir=y_dir, translations=translations)
+        fused = stitch_image(images=ims, y_dir=y_dir, translations=translate)
         all_fused.append(fused)
 
-        masks_pred, flows, styles, diams = model.eval(fused[0,0], diameter=40, channels=[0,0],
-                                                niter=2000, invert=False, cellprob_threshold=-6,
-                                                flow_threshold=0)
-        all_masks.append(masks_pred)
-
-    return all_fused, all_masks
+    return all_fused
 
 def compute_mask_single_time(image, diameter=40):
 
@@ -314,7 +305,7 @@ def compute_mask_single_time(image, diameter=40):
                                                 flow_threshold=0)
     """
     model = models.CellposeModel(gpu=True)
-    masks_pred, _, _, = model.eval(image, diameter=40,
+    masks_pred, _, _, = model.eval(image, diameter=diameter,
                                      niter=2000, invert=False,
                                      cellprob_threshold=-6, flow_threshold=0)
     
@@ -473,6 +464,16 @@ def save_assembled_data(export_folder, assembled_images=None, assembled_masks=No
     if assembled_masks is not None:
         for mask, day in zip(assembled_masks, days):
             skimage.io.imsave(Path(export_folder).joinpath(f'{day}d_assembled_mask.tif'), mask)
+
+def save_assembled_data_stack(export_folder, prefix='', assembled_images=None, assembled_masks=None):
+    
+    if assembled_images is not None:
+        image_stack = np.stack(assembled_images, axis=0)
+        skimage.io.imsave(Path(export_folder).joinpath(f'{prefix}assembled_image_stack.tif'), image_stack)
+    if assembled_masks is not None:
+        mask_stack = np.stack(assembled_masks, axis=0).astype(np.uint16)
+        skimage.io.imsave(Path(export_folder).joinpath(f'{prefix}assembled_mask_stack.tif'), mask_stack)
+
 
 def save_warped_stacks(export_folder, warped_image_list, warped_mask_list):
 
