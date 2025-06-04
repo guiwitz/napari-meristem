@@ -44,6 +44,10 @@ class MeristemAnalyseWidget(QWidget):
         self.data_selection_group.glayout.addWidget(self.btn_load_warped, 1, 0, 1, 2)
         self.btn_load_warped.setToolTip("Load warped data from the selected folder")
 
+        self.manual_option = create_widget(value=False, label='Manual data')
+        self.data_selection_group.glayout.addWidget(self.manual_option.native, 2, 0, 1, 2)
+        self.manual_option.value = False
+
         '''self.btn_load_tracked = QPushButton("Load tracked data")
         self.data_selection_group.glayout.addWidget(self.btn_load_tracked, 2, 0, 1, 2)
         self.btn_load_tracked.setToolTip("Load tracked data from the selected folder")
@@ -155,8 +159,11 @@ class MeristemAnalyseWidget(QWidget):
 
     def _on_load_warped_data(self):
 
+        prefix = ''
+        if self.manual_option.value:
+            prefix = 'manual_'
         export_folder = Path(self.widget_export_directory.value)
-        images_warped, masks_warped = preprocess.import_warped_images(export_folder)
+        images_warped, masks_warped = preprocess.import_warped_images(export_folder, prefix=prefix)
         self.viewer.add_image(images_warped, name='warped_image', colormap='gray', blending='additive')
         #self.test = masks_warped.astype(np.uint16)
         self.viewer.add_labels(masks_warped.astype(np.uint16), name='warped_mask')
