@@ -469,10 +469,10 @@ def save_assembled_data_stack(export_folder, prefix='', assembled_images=None, a
     
     if assembled_images is not None:
         image_stack = np.stack(assembled_images, axis=0)
-        skimage.io.imsave(Path(export_folder).joinpath(f'{prefix}assembled_image_stack.tif'), image_stack)
+        skimage.io.imsave(Path(export_folder).joinpath(f'stitched_image_stack.tif'), image_stack)
     if assembled_masks is not None:
         mask_stack = np.stack(assembled_masks, axis=0).astype(np.uint16)
-        skimage.io.imsave(Path(export_folder).joinpath(f'{prefix}assembled_mask_stack.tif'), mask_stack)
+        skimage.io.imsave(Path(export_folder).joinpath(f'{prefix}stitched_mask_stack.tif'), mask_stack)
 
 
 def save_warped_stacks(export_folder, warped_image_list, warped_mask_list):
@@ -480,7 +480,7 @@ def save_warped_stacks(export_folder, warped_image_list, warped_mask_list):
     skimage.io.imsave(Path(export_folder).joinpath(f'warped_image_stack.tif'), np.stack(warped_image_list, axis=0))
     skimage.io.imsave(Path(export_folder).joinpath(f'warped_mask_stack.tif'), np.stack(warped_mask_list, axis=0))
 
-def import_warped_images(export_folder):
+def import_warped_images(export_folder, prefix=''):
 
     """Import warped images from a directory.
     
@@ -492,7 +492,7 @@ def import_warped_images(export_folder):
     """
 
     warped_image_stack = skimage.io.imread(Path(export_folder).joinpath(f'warped_image_stack.tif'))
-    warped_mask_stack = skimage.io.imread(Path(export_folder).joinpath(f'warped_mask_stack.tif'))
+    warped_mask_stack = skimage.io.imread(Path(export_folder).joinpath(f'{prefix}warped_mask_stack.tif'))
 
 
     return warped_image_stack, warped_mask_stack
