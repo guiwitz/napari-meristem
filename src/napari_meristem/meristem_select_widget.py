@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (QVBoxLayout, QPushButton,
-                            QWidget, QListWidget)
+                            QWidget, QListWidget, QLabel)
 from napari_guitils.gui_structures import VHGroup, TabSet
 from magicgui.widgets import create_widget
 
@@ -75,28 +75,30 @@ class MeristemAnalyseWidget(QWidget):
         self.mtrack_group.glayout.addWidget(self.btn_remove_track, 1, 1, 1, 1)
         self.btn_remove_track.setToolTip("Remove the selected track")
 
+        self.mtrack_group.glayout.addWidget(QLabel('Tracks'), 2, 0, 1, 1)
         self.track_list = QListWidget()
-        self.mtrack_group.glayout.addWidget(self.track_list, 2, 0, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.track_list, 3, 0, 1, 1)
         self.track_list.setToolTip("List of tracks")
         self.track_list.setSelectionMode(QListWidget.MultiSelection)
 
+        self.mtrack_group.glayout.addWidget(QLabel('Track sequence'), 2, 1, 1, 1)
         self.track_sequence_list = QListWidget()
-        self.mtrack_group.glayout.addWidget(self.track_sequence_list, 2, 1, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.track_sequence_list, 3, 1, 1, 1)
         self.track_sequence_list.setToolTip("List of track parts")
 
         self.btn_set_mother_daughter = QPushButton('Set mother-daughter')
-        self.mtrack_group.glayout.addWidget(self.btn_set_mother_daughter, 3, 0, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_set_mother_daughter, 4, 0, 1, 1)
         self.btn_set_mother_daughter.setToolTip("Set mother-daughter relationship for the selected cells")
         
 
         self.btn_remove_track_position = QPushButton('Remove track position')
-        self.mtrack_group.glayout.addWidget(self.btn_remove_track_position, 3, 1, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_remove_track_position, 4, 1, 1, 1)
 
         self.btn_export_tracks = QPushButton('Export tracks')
-        self.mtrack_group.glayout.addWidget(self.btn_export_tracks, 4, 0, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_export_tracks, 5, 0, 1, 1)
         self.btn_export_tracks.setToolTip("Export tracks to a file")
         self.btn_import_tracks = QPushButton('Import tracks')
-        self.mtrack_group.glayout.addWidget(self.btn_import_tracks, 4, 1, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_import_tracks, 5, 1, 1, 1)
         self.btn_import_tracks.setToolTip("Import tracks from a file")
 
         # Set identities
