@@ -1,14 +1,20 @@
 name: napari-meristem
-display_name: Meristem
+display_name: MeristemTracker
 # use 'hidden' to remove plugin from napari hub search results
-visibility: public
+visibility: hidden
 # see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
 categories: ["Annotation", "Segmentation", "Acquisition"]
 contributions:
   commands:
-    - id: napari-meristem.make_meristem_widget
+    - id: napari-meristem.make_meristem_preproc_widget
       python_name: napari_meristem:MeristemWidget
-      title: Meristem QWidget
+      title: Meristem Preproc
+    - id: napari-meristem.make_meristem_complex_widget
+      python_name: napari_meristem:MeristemAnalyseWidget
+      title: Meristem Complex
+
   widgets:
-    - command: napari-meristem.make_meristem_widget
-      display_name: Meristem QWidget
+    - command: napari-meristem.make_meristem_preproc_widget
+      display_name: Meristem Preproc
+    - command: napari-meristem.make_meristem_complex_widget
+      display_name: Meristem Complex
