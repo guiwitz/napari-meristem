@@ -143,7 +143,7 @@ class MeristemAnalyseWidget(QWidget):
         self.btn_add_identity.clicked.connect(self._on_add_identity)
         self.btn_export_identities.clicked.connect(self._on_export_identities)
         self.btn_import_identities.clicked.connect(self._on_import_identities)
-        self.btn_assign_identity.clicked.connect(self._on_assign_identify)
+        self.btn_assign_identity.clicked.connect(self._on_assign_identity)
 
     
     def _on_add_identity(self):
@@ -195,7 +195,7 @@ class MeristemAnalyseWidget(QWidget):
 
         current_track_id = self.track_list.selectedItems()
         if len(current_track_id) != 1:
-            raise ValueError("Please select a track ID from the list.")
+            warn("Please select a track ID from the list.")
             return
         self.track_id = int(current_track_id[0].text())
 
@@ -221,6 +221,7 @@ class MeristemAnalyseWidget(QWidget):
         self.track_sequence_list.setCurrentItem(self.track_sequence_list.findItems(str(self.coordinates[0]), Qt.MatchExactly)[0])
 
         layer.data = self.current_track[['track_id', 't', 'y', 'x']].values
+        layer.graph = self.graph
         layer.refresh()
 
     def fix_track_dtypes(self):
@@ -317,6 +318,7 @@ class MeristemAnalyseWidget(QWidget):
                 self.update_track_sequence_list()
             
             self.viewer.layers['manual_track'].data = track
+            self.viewer.layers['manual_track'].graph = self.graph
             self.viewer.layers['manual_track'].refresh()
 
 
@@ -333,8 +335,25 @@ class MeristemAnalyseWidget(QWidget):
                 track = self.current_track[['track_id', 't', 'y', 'x']].values
             self.track_sequence_list.clear()
             self.track_list.takeItem(self.track_list.row(selected_items[0]))
+            self.remove_track_from_graph(selected_track)
+
             self.viewer.layers['manual_track'].data = track
+            self.viewer.layers['manual_track'].graph = self.graph
             self.viewer.layers['manual_track'].refresh()
+
+    def remove_track_from_graph(self, remove_id):
+        """Remove elements of the graph that are related to the removed track."""
+        matching_mother = -1
+        if remove_id in self.graph.keys():
+            matching_mother = self.graph[remove_id][0]
+
+        keys_to_remove = []
+        for key, val in self.graph.items():
+            if (val[0] == matching_mother) or (val[0] == remove_id):
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            self.graph.pop(key)
             
     def _on_export_tracks(self):
 
@@ -421,7 +440,7 @@ class MeristemAnalyseWidget(QWidget):
         self.complex_list.addItem(f'{new_complex_id}')
         self.complex_list.setCurrentItem(self.complex_list.findItems(f'{new_complex_id}', Qt.MatchExactly)[0])
 
-    def _on_assign_identify(self):
+    def _on_assign_identity(self):
 
         """Assign identity to the selected cells."""
         selected_items = self.identity_list.selectedItems()
