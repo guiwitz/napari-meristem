@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import napari
 from natsort import natsorted
 import skimage
@@ -43,80 +44,73 @@ class MeristemWidget(QWidget):
         self.widget_export_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose export directory"})
         self.data_selection_group.glayout.addWidget(self.widget_export_directory.native, 1, 0, 1, 2)
 
-        self.btn_load_data = QPushButton("Load data")
+        self.btn_load_data = QPushButton("Load single day stack")
         self.data_selection_group.glayout.addWidget(self.btn_load_data, 3, 0, 1, 2)
         self.btn_load_data.setToolTip("Load data from the selected folder")
-
-        self.data_selection_group.gbox.setMaximumHeight(self.data_selection_group.gbox.sizeHint().height())
-
-
-        # Days group
-        self.days_group = VHGroup('Days', orientation='G')
-        self.tabs.add_named_tab('Data preproc', self.days_group.gbox)
 
         self.spinbox_time = QSpinBox()
         self.spinbox_time.setRange(0, 100)
 
         self.spinbox_time.setValue(0)
         self.spinbox_time.setSingleStep(1)
-        self.spinbox_time.setPrefix("Day: ")
-        self.days_group.glayout.addWidget(self.spinbox_time, 0, 0, 1, 2)
+        self.spinbox_time.setPrefix("Day to load: ")
+        self.data_selection_group.glayout.addWidget(self.spinbox_time, 4, 0, 1, 2)
 
-        self.spinbox_max_days = QSpinBox()
-        self.spinbox_max_days.setRange(0, 100)
-        self.spinbox_max_days.setValue(0)
-        self.spinbox_max_days.setSingleStep(1)
-        self.spinbox_max_days.setPrefix("Max days: ")
-        self.days_group.glayout.addWidget(self.spinbox_max_days, 1, 0, 1, 2)
-
-        self.days_group.gbox.setMaximumHeight(self.days_group.gbox.sizeHint().height())
+        self.data_selection_group.gbox.setMaximumHeight(self.data_selection_group.gbox.sizeHint().height())
 
         # Project group
         self.project_stitch_group = VHGroup('Project', orientation='G')
         self.tabs.add_named_tab('Data preproc', self.project_stitch_group.gbox)
 
-        self.btn_project_simple = QPushButton("Project Simple")
+        self.btn_project_simple = QPushButton("Standard Projection Current Stack")
         self.project_stitch_group.glayout.addWidget(self.btn_project_simple, 0, 0, 1, 2)
         self.btn_project_simple.setToolTip("Project data using simple projection")
 
-        self.btn_all_projection = QPushButton("Project All")
+        self.btn_all_projection = QPushButton("Project and Save time-series")
         self.btn_all_projection.setToolTip("Project all data using advanced projection")
         self.project_stitch_group.glayout.addWidget(self.btn_all_projection, 2, 0, 1, 2)
 
-        self.btn_load_proj_single_day = QPushButton('Load projected data')
+        self.btn_load_proj_single_day = QPushButton('Load single time point projection')
         self.btn_load_proj_single_day.setToolTip("Load single projected time point")
         self.project_stitch_group.glayout.addWidget(self.btn_load_proj_single_day, 3, 0, 1, 2)
 
+        self.spinbox_max_days = QSpinBox()
+        self.spinbox_max_days.setRange(0, 100)
+        self.spinbox_max_days.setValue(0)
+        self.spinbox_max_days.setSingleStep(1)
+        self.spinbox_max_days.setPrefix("Max day to process: ")
+        self.project_stitch_group.glayout.addWidget(self.spinbox_max_days, 4, 0, 1, 2)
+
         self.project_stitch_group.gbox.setMaximumHeight(self.project_stitch_group.gbox.sizeHint().height())
 
-        # Stitch group
-        self.arrange_group = VHGroup('Stitch', orientation='G')
-        self.tabs.add_named_tab('Stitch & Warp', self.arrange_group.gbox)
+        # shift group
+        self.shift_group = VHGroup('Shift', orientation='G')
+        self.tabs.add_named_tab('Stitch & Warp', self.shift_group.gbox)
 
         self.spinbox_top_left = QSpinBox()
         self.spinbox_top_left.setRange(0, 4)
         self.spinbox_top_left.setValue(1)
         self.spinbox_top_left.setSingleStep(1)
         self.spinbox_top_left.setPrefix("Top left: ")
-        self.arrange_group.glayout.addWidget(self.spinbox_top_left, 0, 0, 1, 1)
+        self.shift_group.glayout.addWidget(self.spinbox_top_left, 0, 0, 1, 1)
         self.spinbox_top_right = QSpinBox()
         self.spinbox_top_right.setRange(0, 4)
         self.spinbox_top_right.setValue(4)
         self.spinbox_top_right.setSingleStep(1)
         self.spinbox_top_right.setPrefix("Top right: ")
-        self.arrange_group.glayout.addWidget(self.spinbox_top_right, 0, 1, 1, 1)
+        self.shift_group.glayout.addWidget(self.spinbox_top_right, 0, 1, 1, 1)
         self.spinbox_bottom_left = QSpinBox()
         self.spinbox_bottom_left.setRange(0, 4)
         self.spinbox_bottom_left.setValue(2)
         self.spinbox_bottom_left.setSingleStep(1)
         self.spinbox_bottom_left.setPrefix("Bottom left: ")
-        self.arrange_group.glayout.addWidget(self.spinbox_bottom_left, 1, 0, 1, 1)
+        self.shift_group.glayout.addWidget(self.spinbox_bottom_left, 1, 0, 1, 1)
         self.spinbox_bottom_right = QSpinBox()
         self.spinbox_bottom_right.setRange(0, 4)
         self.spinbox_bottom_right.setValue(3)
         self.spinbox_bottom_right.setSingleStep(1)
         self.spinbox_bottom_right.setPrefix("Bottom right: ")
-        self.arrange_group.glayout.addWidget(self.spinbox_bottom_right, 1, 1, 1, 1)
+        self.shift_group.glayout.addWidget(self.spinbox_bottom_right, 1, 1, 1, 1)
 
         self.arrangement_boxes = [self.spinbox_top_left,
                      self.spinbox_bottom_left, 
@@ -125,38 +119,44 @@ class MeristemWidget(QWidget):
         
 
         self.btn_shift = QPushButton("Shift simple")
-        self.arrange_group.glayout.addWidget(self.btn_shift, 2, 0, 1, 1)
+        self.shift_group.glayout.addWidget(self.btn_shift, 2, 0, 1, 1)
         self.btn_shift.setToolTip("Shift the images based on arrangment and image size")
 
         self.btn_shift_template = QPushButton("Shift template")
-        self.arrange_group.glayout.addWidget(self.btn_shift_template, 2, 1, 1, 1)
+        self.shift_group.glayout.addWidget(self.btn_shift_template, 2, 1, 1, 1)
         self.btn_shift_template.setToolTip("Shift the images based on template matching")
 
         self.btn_save_shifts = QPushButton("Save shifts")
-        self.arrange_group.glayout.addWidget(self.btn_save_shifts, 3, 0, 1, 1)
+        self.shift_group.glayout.addWidget(self.btn_save_shifts, 3, 0, 1, 1)
         self.btn_save_shifts.setToolTip("Save the shifts to the selected folder")
 
         self.btn_load_shifts = QPushButton("Load shifts")
-        self.arrange_group.glayout.addWidget(self.btn_load_shifts, 3, 1, 1, 1)
+        self.shift_group.glayout.addWidget(self.btn_load_shifts, 3, 1, 1, 1)
         self.btn_load_shifts.setToolTip("Load the shifts from the selected folder")
 
+        self.shift_group.gbox.setMaximumHeight(self.shift_group.gbox.sizeHint().height())
+
+        # Stitch group
+        self.arrange_group = VHGroup('Stitch', orientation='G')
+        self.tabs.add_named_tab('Stitch & Warp', self.arrange_group.gbox)
+
         self.btn_stitch_single_time = QPushButton("Stitch single time point")
-        self.arrange_group.glayout.addWidget(self.btn_stitch_single_time, 4, 0, 1, 1)
+        self.arrange_group.glayout.addWidget(self.btn_stitch_single_time, 0, 0, 1, 1)
 
         self.btn_save_single_stitch = QPushButton("Save stitched image")
-        self.arrange_group.glayout.addWidget(self.btn_save_single_stitch, 4, 1, 1, 1)
+        self.arrange_group.glayout.addWidget(self.btn_save_single_stitch, 0, 1, 1, 1)
         self.btn_save_single_stitch.setToolTip("Save the stitched image to the selected folder")
 
-        self.btn_run_workflow = QPushButton("Stitch all images")
-        self.arrange_group.glayout.addWidget(self.btn_run_workflow, 5, 0, 1, 2)
+        self.btn_run_workflow = QPushButton("Stitch and save time-series")
+        self.arrange_group.glayout.addWidget(self.btn_run_workflow, 1, 0, 1, 2)
         self.btn_run_workflow.setToolTip("Stitch all images in the selected folder")
 
-        self.btn_load_assembled_data = QPushButton("Load all stitched data")
-        self.arrange_group.glayout.addWidget(self.btn_load_assembled_data, 6, 0, 1, 1)
+        self.btn_load_assembled_data = QPushButton("Load time-series stitched image")
+        self.arrange_group.glayout.addWidget(self.btn_load_assembled_data, 2, 0, 1, 1)
         self.btn_load_assembled_data.setToolTip("Load assembled data from the selected folder")
 
-        self.btn_load_assembled_single = QPushButton("Load single stitched image")
-        self.arrange_group.glayout.addWidget(self.btn_load_assembled_single, 6, 1, 1, 1)
+        self.btn_load_assembled_single = QPushButton("Load single stitched time point")
+        self.arrange_group.glayout.addWidget(self.btn_load_assembled_single, 2, 1, 1, 1)
         self.btn_load_assembled_single.setToolTip("Load assembled data for single time")
 
         self.arrange_group.gbox.setMaximumHeight(self.arrange_group.gbox.sizeHint().height())
@@ -165,18 +165,21 @@ class MeristemWidget(QWidget):
         self.mask_group = VHGroup('Mask', orientation='G')
         self.tabs.add_named_tab('Stitch & Warp', self.mask_group.gbox)
 
-        self.btn_compute_single_mask = QPushButton("Compute single mask")
+        self.btn_compute_single_mask = QPushButton("Compute single time point mask")
         self.mask_group.glayout.addWidget(self.btn_compute_single_mask, 0, 0, 1, 2)
-        self.btn_compute_single_mask.setToolTip("Compute mask for the stitched image")
-        self.btn_compute_all_masks = QPushButton("Compute all masks")
+        self.btn_compute_single_mask.setToolTip("Compute mask for current frame of stitched image")
+        self.btn_compute_all_masks = QPushButton("Compute time-series masks")
         self.mask_group.glayout.addWidget(self.btn_compute_all_masks, 1, 0, 1, 2)
-        self.btn_compute_all_masks.setToolTip("Compute masks for all images")
+        self.btn_compute_all_masks.setToolTip("Compute masks for all time points")
         self.spinbox_diameter = QSpinBox()
         self.spinbox_diameter.setRange(0, 1000)
         self.spinbox_diameter.setValue(40)
         self.spinbox_diameter.setSingleStep(1)
         self.spinbox_diameter.setPrefix("Diameter: ")
         self.mask_group.glayout.addWidget(self.spinbox_diameter, 2, 0, 1, 2)
+        self.btn_load_mask_series = QPushButton("Load mask series")
+        self.mask_group.glayout.addWidget(self.btn_load_mask_series, 3, 0, 1, 2)
+        self.btn_load_mask_series.setToolTip("Load mask series from the selected folder")
 
         self.mask_group.gbox.setMaximumHeight(self.mask_group.gbox.sizeHint().height())
 
@@ -209,34 +212,11 @@ class MeristemWidget(QWidget):
         # Options group
         self.options_group = VHGroup('Options', orientation='G')
         self.tabs.add_named_tab('Stitch & Warp', self.options_group.gbox)
-        self.manual_option = create_widget(value=False, options={"label": "Manual stitching"})
+        self.manual_option = create_widget(value=False, options={"label": "Load manually fixed mask"})
         self.options_group.glayout.addWidget(self.manual_option.native, 0, 0, 1, 2)
         self.options_group.gbox.setMaximumHeight(self.options_group.gbox.sizeHint().height())
 
-        # Selection group
-        self.selection_group = VHGroup('Selection', orientation='G')
-        self.tabs.add_named_tab('Selection', self.selection_group.gbox)
-        self.btn_select_mask = QPushButton("Add selection mask")
-        self.selection_group.glayout.addWidget(self.btn_select_mask, 0, 0, 1, 2)
-        self.btn_select_mask.setToolTip("Add a selection mask to the image")
-
-        self.btn_export_selection_mask = QPushButton("Export selection mask")
-        self.selection_group.glayout.addWidget(self.btn_export_selection_mask, 1, 0, 1, 2)
-        self.btn_export_selection_mask.setToolTip("Export annotated mask")
-        
-        self.btn_load_selection_mask = QPushButton("Load selection mask")
-        self.selection_group.glayout.addWidget(self.btn_load_selection_mask, 2, 0, 1, 2)
-        self.btn_load_selection_mask.setToolTip("Load annotated mask")
-        self.btn_match_selected_indice_on_stitch = QPushButton("Match selected indices")
-        self.selection_group.glayout.addWidget(self.btn_match_selected_indice_on_stitch, 3, 0, 1, 2)
-        self.btn_match_selected_indice_on_stitch.setToolTip("Match selected indices on stitched image")
-
-        self.btn_track = QPushButton("Track")
-        self.selection_group.glayout.addWidget(self.btn_track, 4, 0, 1, 2)
-        self.btn_track.setToolTip("Track the selected indices")
-        self.selection_group.gbox.setMaximumHeight(self.selection_group.gbox.sizeHint().height())
-
-
+        # manual fix group
         self.manual_fix_group = VHGroup('Manual fix', orientation='G')
         self.tabs.add_named_tab('Selection', self.manual_fix_group.gbox)
         self.btn_init_manual_fix = QPushButton("Initialize manual fix")
@@ -249,14 +229,12 @@ class MeristemWidget(QWidget):
         self.manual_fix_group.glayout.addWidget(self.btn_update_mask_merged, 2, 0, 1, 2)
         self.btn_update_mask_merged.setToolTip("Update the mask given manual merge")
         self.manual_fix_group.gbox.setMaximumHeight(self.manual_fix_group.gbox.sizeHint().height())
-
-
-
         
         self._add_connections()
 
     def _add_connections(self):
         
+        self.widget_data_directory.changed.connect(self._on_pick_data_directory)
         self.btn_load_data.clicked.connect(self._on_load_data)
         self.btn_project_simple.clicked.connect(self._on_project_simple)
         self.btn_all_projection.clicked.connect(self._on_project_advanced)
@@ -275,17 +253,21 @@ class MeristemWidget(QWidget):
         self.btn_load_ref_points.clicked.connect(self._on_load_ref_points)
         self.btn_compute_single_mask.clicked.connect(self._on_compute_single_mask)
         self.btn_compute_all_masks.clicked.connect(self._on_compute_all_masks)
+        self.btn_load_mask_series.clicked.connect(self._on_load_mask_series)
         self.btn_warp.clicked.connect(self.warp)
         self.btn_load_warped.clicked.connect(self._on_load_warped_data)
-        self.btn_select_mask.clicked.connect(self._on_add_selection_mask)
-        self.btn_export_selection_mask.clicked.connect(self._on_export_selection_mask)
-        self.btn_match_selected_indice_on_stitch.clicked.connect(self._on_match_selected_indice_on_stitch)
-        self.btn_load_selection_mask.clicked.connect(self._on_load_selection_mask)
-        self.btn_track.clicked.connect(self._on_track)
         self.btn_init_manual_fix.clicked.connect(self._on_init_manual_fix)
         self.btn_update_mask.clicked.connect(self._on_update_after_manual_split)
         self.btn_update_mask_merged.clicked.connect(self._on_update_after_manual_merge)
 
+
+    def _on_pick_data_directory(self):
+        
+        pos_files = list(self.widget_data_directory.value.glob(f'*d_pos*'))
+        self.days = np.unique([int(re.match(r"^(\d+)[a-zA-Z_]", f.name).group(1)) for f in pos_files])
+
+        self.spinbox_max_days.setRange(0, len(self.days))
+        self.spinbox_max_days.setValue(len(self.days))
 
     def _on_load_data(self):
         
@@ -300,20 +282,17 @@ class MeristemWidget(QWidget):
     def _on_load_assembled_data(self):
 
         export_folder = Path(self.widget_export_directory.value)
-        '''images_assembled, image_names = preprocess.import_assembled_images(export_folder)
-        masks_assembled, mask_names = preprocess.import_assembled_masks(export_folder)
-
-        self.images_assembled_c = preprocess.crop_images(images_assembled)
-        self.masks_assembled_c = preprocess.crop_images(masks_assembled)
-
-        self.viewer.add_image(np.stack(self.images_assembled_c, axis=0), name='stitched_image', colormap='gray', blending='additive')
-        self.viewer.add_labels(np.stack(self.masks_assembled_c, axis=0).astype(np.uint16), name='stitched_mask')'''
 
         if self.manual_option.value:
             prefix = 'manual_'
         else:
             prefix = ''
 
+        im_path = export_folder.joinpath('stitched_image_stack.tif')
+        if not im_path.exists():
+            QMessageBox.critical(self, "Error", f"Stitched image stack does not exist at {im_path}")
+            return
+        
         self.images_assembled_c = skimage.io.imread(export_folder.joinpath(f'stitched_image_stack.tif'))
         self.viewer.add_image(self.images_assembled_c, name='stitched_image', colormap='gray', blending='additive')
 
@@ -325,16 +304,21 @@ class MeristemWidget(QWidget):
 
     def _on_load_assemble_single(self):
         day = self.spinbox_time.value()
-        image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif'))
-        mask = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif'))
-        self.viewer.add_image(image, name=f"stitched_image_d{day}", colormap='gray', blending='additive')
-        self.viewer.add_labels(mask.astype(int), name=f"stitched_mask_d{day}")
+
+        im_path = Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif')
+        mask_path = Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif')
+        if not im_path.exists():
+            QMessageBox.critical(self, "Error", f"Stitched image for day {day} does not exist at {im_path}")
+        else:
+            image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif'))
+            self.viewer.add_image(image, name=f"stitched_image_d{day}", colormap='gray', blending='additive')
+        if not mask_path.exists():
+            QMessageBox.critical(self, "Error", f"Stitched mask for day {day} does not exist at {mask_path}")
+        else:
+            mask = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif'))
+            self.viewer.add_labels(mask.astype(int), name=f"stitched_mask_d{day}")
     
     def _on_project_simple(self):
-
-        '''if self.image_series_at_time is not None:
-            for ind, image in enumerate(self.image_series_at_time):
-                self.viewer.layers[f"pos{ind+1}"].data = image.max(axis=0)'''
         
         for i in range(1,5):
             self.viewer.layers[f"pos{i}"].data = self.viewer.layers[f"pos{i}"].data.max(axis=0)
@@ -364,6 +348,10 @@ class MeristemWidget(QWidget):
         
         day = self.spinbox_time.value()
         for i in range(1,5):
+            im_path = Path(self.widget_export_directory.value).joinpath(f'{day}d_pos{i}_proj.tif')
+            if not im_path.exists():
+                QMessageBox.critical(self, "Error", f"Projection for day {day} does not exist")
+                return
             im_proj = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_pos{i}_proj.tif'))
             self.viewer.add_image(im_proj, name=f"pos{i}", colormap='gray', blending='additive')
 
@@ -429,15 +417,18 @@ class MeristemWidget(QWidget):
 
     def _on_compute_single_mask(self):
         
-        day = self.spinbox_time.value()
-        image = self.viewer.layers[f"stitched_image_d{day}"].data
+        if 'stitched_image' not in self.viewer.layers:
+            QMessageBox.critical(self, "Error", "Please load stitched image first")
+            return
+        
+        day = self.viewer.dims.current_step[0]
+        image = self.viewer.layers["stitched_image"].data[day, :, :]
         mask = preprocess.compute_mask_single_time(image=image, diameter=self.spinbox_diameter.value())
         if f"stitched_mask_d{day}" in self.viewer.layers:
             self.viewer.layers[f"stitched_mask_d{day}"].data = mask.astype(int)
             self.viewer.layers[f"stitched_mask_d{day}"].refresh()
         else:
             self.viewer.add_labels(mask.astype(np.uint16), name=f"stitched_mask_d{day}")
-        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled_mask.tif'), mask)
 
     def _on_compute_all_masks(self):
         
@@ -452,7 +443,28 @@ class MeristemWidget(QWidget):
         skimage.io.imsave(
             Path(self.widget_export_directory.value).joinpath(f'stitched_mask_stack.tif'),
             np.stack(masks, axis=0).astype(np.uint16))
+        
+    def _on_load_mask_series(self):
 
+        export_folder = Path(self.widget_export_directory.value)
+
+        if self.manual_option.value:
+            prefix = 'manual_'
+        else:
+            prefix = ''
+
+    
+        if export_folder.joinpath(f'{prefix}stitched_mask_stack.tif').exists():
+            self.masks_assembled_c = skimage.io.imread(export_folder.joinpath(f'{prefix}stitched_mask_stack.tif')).astype(np.uint16)
+            self.viewer.add_labels(self.masks_assembled_c, name='stitched_mask')
+
+            self.viewer.add_points(name='match_points',ndim=3)
+
+        else:
+            QMessageBox.critical(self, "Error", f"Stitched mask stack does not exist at {export_folder.joinpath(f'{prefix}stitched_mask_stack.tif')}")
+            return
+
+        
 
     def save_single_stitch(self):
         """Save manually stitched image"""
@@ -551,7 +563,6 @@ class MeristemWidget(QWidget):
         self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(np.uint16), name='warped_mask') 
         self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
 
-
     def _on_load_warped_data(self):
 
         if self.manual_option.value:
@@ -564,82 +575,6 @@ class MeristemWidget(QWidget):
         self.viewer.add_image(images_warped, name='warped_image', colormap='gray', blending='additive')
         self.viewer.add_labels(masks_warped.astype(np.uint16), name='warped_mask')
         self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
-
-    def _on_add_selection_mask(self):
-        
-        cellmask = np.zeros_like(self.viewer.layers['warped_mask'].data, dtype=np.uint16)
-        self.viewer.add_labels(cellmask, name='selection_mask')
-
-    def _on_export_selection_mask(self):
-        cellmask = self.viewer.layers['selection_mask'].data
-        skimage.io.imsave(Path(self.widget_export_directory.value).joinpath('selection_mask.tif'), cellmask.astype(np.uint16))
-
-    def _on_load_selection_mask(self):
-        cellmask = skimage.io.imread(Path(self.widget_export_directory.value).joinpath('selection_mask.tif'))
-        self.viewer.add_labels(cellmask, name='selection_mask')
-
-    def _on_match_selected_indice_on_stitch(self):
-        
-        if 'selection_mask' not in self.viewer.layers:
-            QMessageBox.critical(self, "Error", "Please add a selection mask first")
-            return
-        if 'stitched_mask' not in self.viewer.layers:
-            self._on_load_assembled_data()
-        if 'warped_mask' not in self.viewer.layers:
-            self._on_load_warped_data()
-        
-        # get indices covered by annotations in the warped image
-        cellmask = self.viewer.layers['selection_mask'].data
-        mask_warped = self.viewer.layers['warped_mask'].data
-        mask_stitched = self.viewer.layers['stitched_mask'].data
-
-        selected_cells_warped = np.zeros_like(cellmask, dtype=np.uint16)
-        selected_cells_stitched = np.zeros_like(mask_stitched, dtype=np.uint16)
-
-        for i in range(mask_warped.shape[0]):
-            cell_indices = mask_warped[i][cellmask[i] > 0]
-            indices = np.unique(cell_indices)
-
-            for j in indices:
-                selected_cells_warped[i][mask_warped[i] == j] = j
-                selected_cells_stitched[i][mask_stitched[i] == j] = j
-
-        self.viewer.add_labels(selected_cells_stitched, name='selected_cells_stitched')
-        self.viewer.add_labels(selected_cells_warped, name='selected_cells_warped')
-
-    def _on_track(self):
-    
-        model = Trackastra.from_pretrained("general_2d", device='cpu')
-        track_graph = model.track(imgs=self.viewer.layers['warped_image'].data,
-                                  masks=self.viewer.layers['selected_cells_warped'].data, mode="greedy")  # or mode="ilp", or "greedy_nodiv"
-        
-        outdir = Path(self.widget_export_directory.value).joinpath('tracked')
-        if not outdir.exists():
-            outdir.mkdir(parents=True, exist_ok=True)
-        ctc_tracks, masks_tracked = graph_to_ctc(
-            track_graph,
-            self.viewer.layers['selected_cells_warped'].data,
-            outdir=outdir
-            )
-        
-        napari_tracks, napari_tracks_graph, _ = graph_to_napari_tracks(track_graph)
-        self.viewer.add_labels(masks_tracked)
-        self.viewer.add_tracks(data=napari_tracks, graph=napari_tracks_graph)
-
-        # create tracked mask of unwarped images
-        masks_tracked = self.viewer.layers['masks_tracked'].data
-        new_mask = np.zeros_like(masks_tracked)
-        stitched_mask = self.viewer.layers['stitched_mask'].data
-        warped_mask = self.viewer.layers['warped_mask'].data
-
-        for i in np.unique(masks_tracked[masks_tracked > 0]):#[0:1]:
-            for t in range(masks_tracked.shape[0]):
-                original_ids = warped_mask[t][masks_tracked[t] == i]
-                original_ids = np.unique(original_ids)
-                for j in original_ids:
-                    new_mask[t][stitched_mask[t] == j] = i
-        
-        self.viewer.add_labels(new_mask, name='masks_stitched_tracked')
 
     def _on_select_warped_label(self, event):
         
