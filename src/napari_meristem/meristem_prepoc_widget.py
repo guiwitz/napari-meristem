@@ -6,7 +6,7 @@ import skimage
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import (QVBoxLayout, QTabWidget, QPushButton,
+from qtpy.QtWidgets import (QVBoxLayout, QRadioButton, QPushButton,
                             QWidget, QScrollArea,
                             QMessageBox, QSpinBox)
 from napari_guitils.gui_structures import VHGroup, TabSet
@@ -228,6 +228,10 @@ class MeristemWidget(QWidget):
         self.btn_update_mask_merged = QPushButton("Update mask after merge")
         self.manual_fix_group.glayout.addWidget(self.btn_update_mask_merged, 2, 0, 1, 2)
         self.btn_update_mask_merged.setToolTip("Update the mask given manual merge")
+        self.choice_manual_split_type = create_widget(value='split', 
+            options={"choices": ['split', 'merge'], "label": "Manual split type"})
+        self.manual_fix_group.glayout.addWidget(self.choice_manual_split_type.native, 3, 0, 1, 2)
+
         self.manual_fix_group.gbox.setMaximumHeight(self.manual_fix_group.gbox.sizeHint().height())
         
         self._add_connections()
@@ -561,7 +565,7 @@ class MeristemWidget(QWidget):
         preprocess.save_warped_stacks(export_folder=export_folder, warped_image_list=warp_series, warped_mask_list=warp_mask_series)
         self.viewer.add_image(np.stack(warp_series, axis=0)) 
         self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(np.uint16), name='warped_mask') 
-        self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
+        #self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
 
     def _on_load_warped_data(self):
 
@@ -574,7 +578,6 @@ class MeristemWidget(QWidget):
         images_warped, masks_warped = preprocess.import_warped_images(export_folder, prefix=prefix)
         self.viewer.add_image(images_warped, name='warped_image', colormap='gray', blending='additive')
         self.viewer.add_labels(masks_warped.astype(np.uint16), name='warped_mask')
-        self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
 
     def _on_select_warped_label(self, event):
         
@@ -582,8 +585,8 @@ class MeristemWidget(QWidget):
         fix_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0], dtype=np.uint16)
         t = self.viewer.dims.current_step[0]
         fix_mask[self.viewer.layers['stitched_mask'].data[t] == selected_label] = 1
-        
         self._reset_fix_mask(mask=fix_mask)
+        self.set_split_mode_draw() 
         
 
     def _on_init_manual_fix(self):
@@ -593,7 +596,12 @@ class MeristemWidget(QWidget):
         if 'stitched_mask' not in self.viewer.layers:
             self._on_load_assembled_data()
         
+        self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
         self._reset_fix_mask()
+        if self.choice_manual_split_type.value == 'split':
+            self.set_split_mode_select()
+        elif self.choice_manual_split_type.value == 'merge':
+            self.set_merge_mode_draw()
 
     def _reset_fix_mask(self, mask=None):
 
@@ -612,9 +620,47 @@ class MeristemWidget(QWidget):
         else:
             self.viewer.add_labels(fix_mask, name='fix_mask')
 
+    def unselect_all_layers(self):
+        """Unselect all layers in the viewer."""
+        for layer in self.viewer.layers:
+            layer.selected = False
+
+    def set_split_mode_draw(self):
+
+        self.unselect_all_layers()
+
+        self.viewer.layers['warped_mask'].visible = False
+        self.viewer.layers['warped_image'].visible = False
+        self.viewer.layers['stitched_mask'].visible = False
+        self.viewer.layers['stitched_image'].visible = True
         self.viewer.layers['fix_mask'].mode = 'erase'
         self.viewer.layers['fix_mask'].brush_size = 2 
         self.viewer.layers['fix_mask'].refresh()
+        self.viewer.layers.selection.active = self.viewer.layers['fix_mask']
+
+    def set_split_mode_select(self):
+
+        self.viewer.layers['warped_mask'].visible = True
+        self.viewer.layers['warped_image'].visible = True
+        self.viewer.layers['stitched_mask'].visible = False
+        self.viewer.layers['stitched_image'].visible = False
+        self.unselect_all_layers()
+        self.viewer.layers['warped_mask'].mode = 'pick'
+        self.viewer.layers.selection.active = self.viewer.layers['warped_mask']
+
+    def set_merge_mode_draw(self):
+        self.viewer.layers['fix_mask'].mode = 'paint'
+        self.viewer.layers['fix_mask'].brush_size = 2 
+        self.viewer.layers['fix_mask'].refresh()
+
+        self.viewer.layers['warped_mask'].visible = True
+        self.viewer.layers['warped_image'].visible = True
+        self.viewer.layers['stitched_mask'].visible = False
+        self.viewer.layers['stitched_image'].visible = False
+        for layer in self.viewer.layers:
+            layer.selected = False
+        self.viewer.layers.selection.active = self.viewer.layers['fix_mask']
+
 
     def _on_update_after_manual_split(self):
 
@@ -640,6 +686,9 @@ class MeristemWidget(QWidget):
         skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
         skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_stitched_mask_stack.tif'), self.viewer.layers['stitched_mask'].data)
 
+        self._reset_fix_mask()
+        self.set_split_mode_select()
+
     def _on_update_after_manual_merge(self):
 
         mask_t = self.viewer.layers['warped_mask'].data[self.viewer.dims.current_step[0]]
@@ -656,3 +705,6 @@ class MeristemWidget(QWidget):
 
         skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_warped_mask_stack.tif'), self.viewer.layers['warped_mask'].data)
         skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'manual_stitched_mask_stack.tif'), self.viewer.layers['stitched_mask'].data)
+
+        self._reset_fix_mask()
+        self.set_merge_mode_draw()
