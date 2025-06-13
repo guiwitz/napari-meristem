@@ -13,33 +13,26 @@ A plugin to track plant meristem cells.
 
 ----------------------------------
 
-This [napari] plugin was generated with [copier] using the [napari-plugin-template].
-
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/napari-plugin-template#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
-
 ## Installation
 
-You can install `napari-meristem` via [pip]:
+Create a new conda environment with Python 3.10 or later, and install the plugin
+using pip:
 
-    pip install napari-meristem
+```bash
+conda create -n napari-meristem python=3.10 napari pyqt
+conda activate napari-meristem
+pip install git+https://github.com/guiwitz/napari-meristem.git
+```
 
+# Usage
+To use this plugin, simply launch napari from the command line:
 
+```bash
+conda activate napari-meristem
+napari
+```
+The widget can be found in the "Plugins" menu under "napari-meristem".
 
-To install latest development version :
-
-    pip install git+https://github.com/guiwitz/napari-meristem.git
-
-
-## Contributing
-
-Contributions are very welcome. Tests can be run with [tox], please ensure
-the coverage at least stays the same before you submit a pull request.
 
 ## License
 
