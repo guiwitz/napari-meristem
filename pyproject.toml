@@ -35,7 +35,8 @@ dependencies = [
     "multiview-stitcher",
     "cellpose",
     "antspyx",
-    "trackastra"
+    "trackastra",
+    "anytree"
 
 ]
 
