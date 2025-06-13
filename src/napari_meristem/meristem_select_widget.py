@@ -2,7 +2,6 @@ from pathlib import Path
 import napari
 from natsort import natsorted
 from warnings import warn
-import skimage
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt
@@ -148,6 +147,7 @@ class MeristemAnalyseWidget(QWidget):
     
     def _on_add_identity(self):
         """Add a new identity to the list."""
+
         identity_name = self.text_identity.value
         if identity_name:
             self.identity_list.addItem(identity_name)
@@ -155,6 +155,8 @@ class MeristemAnalyseWidget(QWidget):
 
 
     def _on_load_warped_data(self):
+        """Load warped images and masks from the selected directory. If the 
+        manual option is selected, it will load the manually fixed data."""
 
         prefix = ''
         if self.manual_option.value:
@@ -167,7 +169,13 @@ class MeristemAnalyseWidget(QWidget):
 
 
     def add_track_layer(self):
-        """Add a new track layer to the viewer."""
+        """Add a new track layer to the viewer. Initialize tracking data structures:
+        - current_track: DataFrame to hold the current track data.
+        - graph: Dictionary to hold the mother-daughter relationships.
+        - track_list: QListWidget to hold the list of tracks.
+        - track_sequence_list: QListWidget to hold the sequence of positions in the current track.
+        - track_id: Integer to hold the current track ID.
+        If a track layer already exists, it will be removed and reinitialized."""
         
         if 'manual_track' in self.viewer.layers:
             self.viewer.layers.remove('manual_track')
@@ -184,7 +192,8 @@ class MeristemAnalyseWidget(QWidget):
         self.track_id = 0
 
     def _on_add_to_track(self, layer, event):
-        """Callback when adding a point to the track when clicking on the "manual_track" layer."""
+        """Callback when adding a point to the track when clicking on the "manual_track" layer.
+        A track ID must be selected from the track_list."""
         
         if (self.current_track is None):
             self.current_track = pd.DataFrame(columns=['track_id', 't', 'y', 'x', 'label', 'identity'])
@@ -225,6 +234,7 @@ class MeristemAnalyseWidget(QWidget):
         layer.refresh()
 
     def fix_track_dtypes(self):
+        """Fix the dtypes of the current track DataFrame to ensure consistency."""
         
         self.current_track.track_id = self.current_track.track_id.astype(int)
         self.current_track.t = self.current_track.t.astype(int)
@@ -234,20 +244,23 @@ class MeristemAnalyseWidget(QWidget):
         self.current_track.identity = self.current_track.identity.astype(str)
         
     def update_track_sequence_list(self):
-        # update the track sequence list
+        """Refresh the current set of points in a track (track_sequence_list) using the 
+        self.current_track DataFrame."""
+
         self.track_sequence_list.clear()
         track_times = self.current_track[self.current_track.track_id == self.track_id].t
         for t in track_times:
             self.track_sequence_list.addItem(f'{t}')
 
     def _on_select_track(self):
-        """Update the track sequence list when a track is selected."""
+        """Upon selecting a track, update the track points list."""
         
         selected_items = self.track_list.selectedItems()
         if len(selected_items) == 0:
             return
         
         selected_track_id = int(selected_items[0].text())
+        self.track_id = selected_track_id
         self.track_sequence_list.clear()
 
         if len(selected_items) == 1:
@@ -271,6 +284,7 @@ class MeristemAnalyseWidget(QWidget):
 
     def _on_new_track(self):
         """Start a new track."""
+
         if self.current_track is not None:
             self.track_id = self.current_track.track_id.max() + 1
             self.track_list.addItem(f'{self.track_id}')
@@ -279,7 +293,8 @@ class MeristemAnalyseWidget(QWidget):
             self.track_list.setCurrentItem(self.track_list.findItems(str(self.track_id), Qt.MatchExactly)[0])
 
     def _on_mother_daughter(self):
-        """Set mother-daughter relationship for the selected cells."""
+        """Set mother-daughter relationship for the selected cells. Adds entry to graph."""
+
         selected_items = self.track_list.selectedItems()
         if len(selected_items) == 3:
             mother_id = int(selected_items[0].text())
@@ -323,7 +338,8 @@ class MeristemAnalyseWidget(QWidget):
 
 
     def _on_remove_track(self):
-        """Remove the selected track."""
+        """Remove the selected track. Ensure that mother-daughter relationships are updated accordingly."""
+
         selected_items = self.track_list.selectedItems()
         if selected_items:
             selected_track = int(selected_items[0].text())
@@ -343,6 +359,7 @@ class MeristemAnalyseWidget(QWidget):
 
     def remove_track_from_graph(self, remove_id):
         """Remove elements of the graph that are related to the removed track."""
+
         matching_mother = -1
         if remove_id in self.graph.keys():
             matching_mother = self.graph[remove_id][0]
@@ -356,6 +373,7 @@ class MeristemAnalyseWidget(QWidget):
             self.graph.pop(key)
             
     def _on_export_tracks(self):
+        """Export the current track and its graph to a CSV file in the selected complex folder."""
 
         if len(self.complex_list.selectedItems()) == 0:
             raise ValueError("Please select a complex from the list.")
@@ -374,6 +392,19 @@ class MeristemAnalyseWidget(QWidget):
         graph_pd.to_csv(export_folder.joinpath('manual_tracks_graph.csv'), index=False)
     
     def find_complexes(self):
+        """Find all complexes in the export directory. Complexes are stored in subfolders of 
+        the complex folder named 'complex_<id>' where <id> is an integer.
+        
+        Parameters
+        ----------
+        
+        
+        Returns
+        -------
+        complex_ids : list
+            list of integers representing the IDs of the complexes found in the export directory.
+        
+        """
 
         main_path = Path(self.widget_export_directory.value)
         complex_path = main_path.joinpath('complexes')
@@ -392,7 +423,7 @@ class MeristemAnalyseWidget(QWidget):
         return complex_ids
 
     def _on_import_tracks(self):
-        """Import tracks from a file."""
+        """Import tracks from the selected complex."""
         
         if len(self.complex_list.selectedItems()) == 0:
             raise ValueError("Please select a complex from the list.")
@@ -430,6 +461,8 @@ class MeristemAnalyseWidget(QWidget):
             self.complex_list.addItem(f'{complex_id}')
 
     def _on_create_complex(self):
+        """Create a new complex. This will create a new folder in the complexes directory
+        and add it to the complex list."""
         
         self.add_track_layer()
         complex_ids = self.find_complexes()
@@ -441,8 +474,8 @@ class MeristemAnalyseWidget(QWidget):
         self.complex_list.setCurrentItem(self.complex_list.findItems(f'{new_complex_id}', Qt.MatchExactly)[0])
 
     def _on_assign_identity(self):
+        """Assign identity to the selected track."""
 
-        """Assign identity to the selected cells."""
         selected_items = self.identity_list.selectedItems()
         if not selected_items:
             raise ValueError("Please select an identity from the list.")
@@ -459,6 +492,7 @@ class MeristemAnalyseWidget(QWidget):
 
     def _on_export_identities(self):
         """Export identities to a file."""
+
         export_folder = Path(self.widget_export_directory.value)
         export_folder = export_folder.joinpath('identities')
         if not export_folder.exists():
@@ -469,6 +503,7 @@ class MeristemAnalyseWidget(QWidget):
     
     def _on_import_identities(self):
         """Import identities from a file."""
+        
         export_folder = Path(self.widget_export_directory.value)
         export_folder = export_folder.joinpath('identities')
         

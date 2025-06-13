@@ -13,6 +13,21 @@ from multiview_stitcher import fusion
 from cellpose import models
 
 def get_max_plane_map_cle(im):
+    """Compute pixel wise the plane with maximum contrast using 
+    the difference of local maximum and minimum areas using pyclesperanto. Returns an image of
+    plane indices.
+    
+    Parameters
+    ----------
+    im : ndarray
+        3d Input image to be processed.
+
+    Returns
+    -------
+    max_plane : ndarray
+        2d image with the maximum plane index.
+
+    """
 
     import pyclesperanto as cle
 
@@ -30,6 +45,22 @@ def get_max_plane_map_cle(im):
     return max_plane
 
 def get_max_plane_map(im):
+    """Compute pixel wise the plane with maximum contrast using 
+    the difference of local maximum and minimum areas using skimage. Returns an image of
+    plane indices.
+    
+    Parameters
+    ----------
+    im : ndarray
+        3d Input image to be processed.
+
+    Returns
+    -------
+    max_plane : ndarray
+        2d image with the maximum plane index.
+
+    """
+
 
     ims_median = skimage.filters.median(im, footprint=np.ones((1,5,5)))
 
@@ -43,6 +74,22 @@ def get_max_plane_map(im):
     return max_plane
 
 def get_max_plane_map_cle_refined(im):
+    """Compute pixel wise the plane with maximum contrast using 
+    Laplace filtering in pyclesperanto. Returns an image of
+    plane indices.
+    
+    Parameters
+    ----------
+    im : ndarray
+        3d Input image to be processed.
+
+    Returns
+    -------
+    max_plane : ndarray
+        2d image with the maximum plane index.
+
+    """
+
 
     import pyclesperanto as cle
 
@@ -92,7 +139,9 @@ def get_max_plane_map_cle_refined(im):
     return grid_z
 
 def create_proj(image, cle=False):
-    """Create a projection of the image by using local maximum projection.
+    """Create a projection of the image by averaging the three planes 
+    around the pixel wise plane of maximum contrast. Uses get_max_plane_map_cle_refined
+    or get_max_plane_map to compute the maximum plane map.
     
     Parameters
     ----------
@@ -195,6 +244,25 @@ def register_match_template(images, template_width=100, template_fraction=0.3):
     return all_shifts
 
 def stitch_image(images, y_dir=1, translations=None):
+    """Stitch a list of images together using multiview_stitcher.
+    
+    Parameters
+    ----------
+    images : list of 2D ndarray
+        List of images to stitch together. The images should be in the order:
+        [top left, bottom left, bottom right, top right].
+    y_dir : int
+        Direction of the y-axis. Use 1 for normal y-axis, -1 for inverted y-axis.
+    translations : list of dict, optional
+        List of translations for each tile in the format [{'y': shift_y, 'x': shift_x}, ...].
+        If None, the function will compute the translations to get 30% overlap between tiles.
+    
+    Returns
+    -------
+    fused : ndarray
+        Fused image after stitching the input images together.
+        Dimensions are (1, 1, height, width)
+    """
 
     # indicate the tile offsets and spacing
     if translations is not None:
@@ -211,7 +279,6 @@ def stitch_image(images, y_dir=1, translations=None):
     spacing = {"y": 1, "x": 1}    
 
     # build input for stitching
-    from multiview_stitcher import param_utils
     msims = []
     for tile_array, tile_translation in zip(images, tile_translations):
         sim = si_utils.get_sim_from_array(
@@ -219,27 +286,12 @@ def stitch_image(images, y_dir=1, translations=None):
             dims=["y", "x"],
             scale=spacing,
             translation=tile_translation,
-            #affine=param_utils.identity_transform(2),
             transform_key = "affine_manual",
         )
         msims.append(msi_utils.get_msim_from_sim(sim, scale_factors=[]))
-
-        # plot the tile configuration
-        # from multiview_stitcher import vis_utils
-        # fig, ax = vis_utils.plot_positions(msims, transform_key='affine_manual')#, transform_key='stage_metadata', use_positional_colors=False)
-
+        
     from dask.diagnostics import ProgressBar
     from multiview_stitcher import registration
-    
-    '''with ProgressBar():
-        params = registration.register(
-            msims,
-            reg_channel_index=0,
-            transform_key="affine_manual",
-            #groupwise_resolution_kwargs={
-            #    'transform': 'affine'},
-            new_transform_key="translation_registered",
-        )'''
 
     with ProgressBar():
         params = registration.register(
@@ -252,12 +304,7 @@ def stitch_image(images, y_dir=1, translations=None):
             groupwise_resolution_kwargs={
                 'transform': 'affine'},
             new_transform_key="translation_registered",
-            #plot_summary=True,
         )
-
-    # plot the tile configuration after registration
-    # vis_utils.plot_positions(msims, transform_key='translation_registered', use_positional_colors=False)
-
 
     fused_sim = fusion.fuse(
         [msi_utils.get_sim_from_msim(msim) for msim in msims],
@@ -273,6 +320,33 @@ def stitch_image(images, y_dir=1, translations=None):
     return fused
 
 def run_stitch(image_series, index_order, max_days=None, cle=False, y_dir=1, translations=None, proj=False):
+    """Run stitching on a series of images.
+    
+    Parameters
+    ----------
+    image_series : list of list of str
+        List of lists, where each inner list contains paths to images to stitch for a specific day.
+    index_order : list of int
+        Order of images in the inner lists so that they are ordered
+        top left, bottom left, bottom right, top right.
+    max_days : int, optional
+        Maximum number of days to process. If None, process all days in image_series.
+    cle : bool, optional
+        If True, use pyclesperanto to compute projections.
+    y_dir : int, optional
+        Direction of the y-axis. Use 1 for normal y-axis, -1 for inverted y-axis.
+    translations : list of dict, optional
+        List of translations for each tile in the format [{'y': shift_y, 'x': shift_x}, ...].
+        If None, the function will compute the translations to get 30% overlap between tiles.
+    proj : bool, optional
+        If True, create projections of the images before stitching.
+
+    Returns
+    -------
+    all_fused : list of ndarray
+        List of fused images for each day after stitching. Dimensions are (1, 1, height, width) for each day.
+          
+    """
 
     if max_days is None:
         max_days = len(image_series)
@@ -297,8 +371,24 @@ def run_stitch(image_series, index_order, max_days=None, cle=False, y_dir=1, tra
     return all_fused
 
 def compute_mask_single_time(image, diameter=40):
+    """Compute a mask for a single time point using Cellpose.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Input image to compute the mask for.
+    diameter : int, optional
+        Diameter of the cells to be detected. Default is 40.
+    
+    Returns
+    -------
+    masks_pred : ndarray
+        Predicted masks for the input image.
 
     """
+
+    """
+    # For Cellpose < 4
     model = models.Cellpose(gpu=True, model_type="cyto3")
     masks_pred, flows, styles, diams = model.eval(image, diameter=diameter, channels=[0,0],
                                                 niter=2000, invert=False, cellprob_threshold=-6,
@@ -312,12 +402,22 @@ def compute_mask_single_time(image, diameter=40):
     return masks_pred
 
 def import_assembled_images(folder):
-    """Import assembled images from a directory.
+    """
+    DEPRECATED: images are now imported as a stack.
+
+    Import assembled images from a directory.
     
     Parameters
     ----------
     folder : str
         Path to the folder containing the assembled images.
+
+    Returns
+    -------
+    image_series : list of 2D ndarray
+        List of stitched images.
+    files_assembled : list of Path
+        List of paths to the assembled image files.
     
     """
 
@@ -327,7 +427,10 @@ def import_assembled_images(folder):
     return image_series, files_assembled
 
 def import_assembled_masks(folder):
-    """Import assembled masks from a directory.
+    """
+    DEPRECATED: masks are now imported as a stack.
+
+    Import assembled masks from a directory.
     
     Parameters
     ----------
@@ -344,7 +447,18 @@ def import_assembled_masks(folder):
 
 
 def crop_images(images):
-    """Crop images to the smallest common size."""
+    """Crop images to the smallest common size.
+    
+    Parameters
+    ----------
+    images : list of 2D ndarray
+        List of images to crop.
+    
+    Returns
+    -------
+    ims : list of 2D ndarray
+        List of cropped images, all of the same size.
+    """
 
     h_min = np.min([im.shape[0] for im in images])
     w_min = np.min([im.shape[1] for im in images])
@@ -354,7 +468,26 @@ def crop_images(images):
     return ims
 
 def warp_pair(src, dst, image_src):
-    """Warp source image to match destination image. Apply same transform to mask if provided."""
+    """Warp image using Thin Plate Spline (TPS) transformation based on
+    source and destination points.
+    
+    Parameters
+    ----------
+    src : ndarray
+        Source points as an Nx2 array, where N is the number of points.
+    dst : ndarray
+        Destination points as an Nx2 array, where N is the number of points.
+    image_src : ndarray
+        Source image to be warped.
+    
+    Returns
+    -------
+    warped : ndarray
+        Warped image.
+    tps : skimage.transform.ThinPlateSplineTransform
+        TPS transformation object containing the estimated transformation.
+    
+    """
     
     tps = skimage.transform.ThinPlateSplineTransform()
     tps.estimate(dst, src)
@@ -363,6 +496,33 @@ def warp_pair(src, dst, image_src):
     return warped, tps
 
 def warp_stack_points(image_list, ref_points, src_index=0, dst_index=1):
+    """Given a list of images of N time points and N reference points of dimensions TYX,
+    warp the image at src_index using a Thin Plate Spline (TPS) transformation
+    based on the reference points at src_index and dst_index in ref_points.
+
+    Parameters
+    ----------
+    image_list : list of ndarray
+        List of images to be warped, where each image corresponds to a time point.
+    ref_points : ndarray
+        Reference points as an Nx3 array of dims TYX. There should be
+        at least three pairs of points for each pair of time points. Points should be
+        sorted by pairs so that 
+        ref_points[ref_points[:,0] == src_index] and 
+        ref_points[ref_points[:,0] == dst_index]
+        return matching points along axis=0
+    src_index : int, optional
+        Index of the source image in the image_list to be warped. Default is 0.
+    dst_index : int, optional
+        Index of the destination image in the image_list for the transformation. Default is 1.
+    
+    Returns
+    -------
+    warped : ndarray
+        Warped image corresponding to the source index.
+    tps : skimage.transform.ThinPlateSplineTransform
+        TPS transformation object containing the estimated transformation.
+    """
 
     src = ref_points[ref_points[:,0] == src_index][:,1:3]
     dst = ref_points[ref_points[:,0] == dst_index][:,1:3]
@@ -375,6 +535,28 @@ def warp_stack_points(image_list, ref_points, src_index=0, dst_index=1):
     return warped, tps
 
 def warp_full_stack(image_list, ref_points):
+    """Warp a full stack of images using Thin Plate Spline (TPS) transformations. Transforms
+    for each successive time point are computed based on the reference points and then applied
+    in series to each image in the stack so that each image matches the last image, i.e. for 
+    3 time points, the first image is warped 2x, the second image is warped 1x, and the
+    last image is not warped at all.
+    
+    Parameters
+    ----------
+    image_list : list of ndarray
+        List of images to be warped, where each image corresponds to a time point.
+    ref_points : ndarray
+        Reference points as an Nx3 array of dims TYX. There should be
+        at least three pairs of points for each pair of time points. For formatting
+        see warp_stack_points.
+
+    Returns
+    -------
+    full_warp : list of ndarray
+        List of warped images, where each image corresponds to a time point.
+    tps_series : list of skimage.transform.ThinPlateSplineTransform
+        List of TPS transformation objects for each time step, containing the estimated transformations.
+    """
 
     warped_series = []
     tps_series = []
@@ -396,7 +578,23 @@ def warp_full_stack(image_list, ref_points):
     return full_warp, tps_series
 
 def get_tps_series(ref_points):
-    """Get a list of TPS transforms for each time step based on reference points."""
+    """Get a list of TPS transforms for each time step based on reference points.
+    
+    Parameters
+    ----------
+    ref_points : ndarray
+        Reference points as an Nx3 array of dims TYX. There should be
+        at least three pairs of points for each pair of time points. Points should be
+        sorted by pairs so that
+        ref_points[ref_points[:,0] == i] and
+        ref_points[ref_points[:,0] == i+1]
+        return matching points along axis=0.
+
+    Returns
+    -------
+    tps_series : list of skimage.transform.ThinPlateSplineTransform
+        List of TPS transformation objects for each time step, containing the estimated transformations.
+    """
 
     tps_series = []
     max_time = int(np.max(ref_points[:,0]))
@@ -415,6 +613,26 @@ def get_tps_series(ref_points):
     return tps_series
 
 def warp_stack_with_transform(image_list, tps_list, image_type='mask'):
+    """Warp a stack of images using a list of TPS transforms. Images are warped in series so
+    that each image matches the last image in the stack. For N time points, the first image is warped
+    N-1 times, the second image is warped N-2 times, and the last image is not warped at all.
+    
+    Parameters
+    ----------
+    image_list : list of ndarray
+        List of images to be warped, where each image corresponds to a time point.
+    tps_list : list of skimage.transform.ThinPlateSplineTransform
+        List of TPS transformation objects for each time step, containing the estimated transformations.
+    image_type : str, optional
+        Type of the image to be warped, 'mask' or 'image'. This determines the preservation 
+        of range and interpolation order.   
+    
+    Returns
+    -------
+    full_warp : list of ndarray
+        List of warped images, where each image corresponds to a time point.
+    
+    """
 
     preserve_range = False
     order = 1
@@ -434,7 +652,26 @@ def warp_stack_with_transform(image_list, tps_list, image_type='mask'):
     return full_warp
 
 def warp_single_time(image, tps_list, time, image_type='mask'):
-    """Warp a single image using a list of TPS transforms."""
+    """Warp a single image to match last image in series using a list of TPS transforms.
+    
+    Parameters
+    ----------
+    image : ndarray
+        Image to be warped.
+    tps_list : list of skimage.transform.ThinPlateSplineTransform
+        List of TPS transformation objects for each time step, containing the estimated transformations.
+    time : int
+        Time index of the image to be warped. This is used to determine the starting point for warping.
+    image_type : str, optional
+        Type of the image to be warped, 'mask' or 'image'. This determines the preservation 
+        of range and interpolation order.
+    
+    Returns
+    -------
+    warped : ndarray
+        Warped image that matches the last image in the series.
+    
+    """
     
     preserve_range = False
     order = 1
@@ -449,6 +686,24 @@ def warp_single_time(image, tps_list, time, image_type='mask'):
     return warped
 
 def save_assembled_data(export_folder, assembled_images=None, assembled_masks=None, days=None):
+    """Save assembled images and masks to a specified export folder.
+    
+    Parameters
+    ----------
+    export_folder : str
+        Path to the folder where the assembled images and masks will be saved.
+    assembled_images : list of ndarray, optional
+        List of assembled images to be saved. Each image should be a 2D array.
+    assembled_masks : list of ndarray, optional
+        List of assembled masks to be saved. Each mask should be a 2D array.
+    days : list of int, optional
+        List of days corresponding to the assembled images and masks. If None, 
+        the function will use the indices of the assembled images.
+
+    Returns
+    -------
+    
+    """
 
     if days is None:
         days = np.arange(len(assembled_images))
@@ -466,7 +721,24 @@ def save_assembled_data(export_folder, assembled_images=None, assembled_masks=No
             skimage.io.imsave(Path(export_folder).joinpath(f'{day}d_assembled_mask.tif'), mask)
 
 def save_assembled_data_stack(export_folder, prefix='', assembled_images=None, assembled_masks=None):
+    """"Save assembled images and masks as stacks to a specified export folder.
     
+    Parameters
+    ----------
+    export_folder : str
+        Path to the folder where the assembled image and mask stacks will be saved.
+    prefix : str, optional
+        Prefix for the saved mask stack file name. Default is an empty string.
+    assembled_images : list of ndarray, optional
+        List of assembled images to be saved as a stack. Each image should be a 2D array.
+    assembled_masks : list of ndarray, optional
+        List of assembled masks to be saved as a stack. Each mask should be a 2D array.
+
+    Returns
+    -------
+
+    """
+
     if assembled_images is not None:
         image_stack = np.stack(assembled_images, axis=0)
         skimage.io.imsave(Path(export_folder).joinpath(f'stitched_image_stack.tif'), image_stack)
@@ -476,18 +748,41 @@ def save_assembled_data_stack(export_folder, prefix='', assembled_images=None, a
 
 
 def save_warped_stacks(export_folder, warped_image_list, warped_mask_list):
+    """Save warped images and masks as stacks to a specified export folder.
+    
+    Parameters
+    ----------
+    export_folder : str
+        Path to the folder where the warped image and mask stacks will be saved.
+    warped_image_list : list of ndarray
+        List of warped images to be saved as a stack. Each image should be a 2D array.
+    warped_mask_list : list of ndarray
+        List of warped masks to be saved as a stack. Each mask should be a 2D array.
 
+    Returns
+    -------
+    
+    """
     skimage.io.imsave(Path(export_folder).joinpath(f'warped_image_stack.tif'), np.stack(warped_image_list, axis=0))
     skimage.io.imsave(Path(export_folder).joinpath(f'warped_mask_stack.tif'), np.stack(warped_mask_list, axis=0))
 
 def import_warped_images(export_folder, prefix=''):
 
-    """Import warped images from a directory.
+    """Import warped stack.
     
     Parameters
     ----------
-    folder : str
-        Path to the folder containing the warped images.
+    export_folder : str
+        Path to the folder where the warped image and mask stacks are saved.
+    prefix : str, optional
+        Prefix for the mask stack file name. Default is an empty string.
+
+    Returns
+    -------
+    warped_image_stack : ndarray
+        Stack of warped images, where each image corresponds to a time point. TYX
+    warped_mask_stack : ndarray
+        Stack of warped masks, where each mask corresponds to a time point. TYX
     
     """
 

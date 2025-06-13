@@ -6,13 +6,10 @@ import skimage
 import numpy as np
 import pandas as pd
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import (QVBoxLayout, QRadioButton, QPushButton,
-                            QWidget, QScrollArea,
-                            QMessageBox, QSpinBox)
+from qtpy.QtWidgets import (QVBoxLayout, QPushButton,
+                            QWidget, QMessageBox, QSpinBox)
 from napari_guitils.gui_structures import VHGroup, TabSet
 from magicgui.widgets import create_widget
-from trackastra.model import Trackastra
-from trackastra.tracking import graph_to_ctc, graph_to_napari_tracks
 
 
 from . import preprocess
@@ -78,7 +75,7 @@ class MeristemWidget(QWidget):
         self.spinbox_max_days.setRange(0, 100)
         self.spinbox_max_days.setValue(0)
         self.spinbox_max_days.setSingleStep(1)
-        self.spinbox_max_days.setPrefix("Max day to process: ")
+        self.spinbox_max_days.setPrefix("Number of days to process: ")
         self.project_stitch_group.glayout.addWidget(self.spinbox_max_days, 4, 0, 1, 2)
 
         self.project_stitch_group.gbox.setMaximumHeight(self.project_stitch_group.gbox.sizeHint().height())
@@ -116,7 +113,6 @@ class MeristemWidget(QWidget):
                      self.spinbox_bottom_left, 
                      self.spinbox_bottom_right,
                      self.spinbox_top_right]
-        
 
         self.btn_shift = QPushButton("Shift simple")
         self.shift_group.glayout.addWidget(self.btn_shift, 2, 0, 1, 1)
@@ -266,15 +262,18 @@ class MeristemWidget(QWidget):
 
 
     def _on_pick_data_directory(self):
-        
+        """Handle the selection of the data directory and update the spinbox for days."""
+
         pos_files = list(self.widget_data_directory.value.glob(f'*d_pos*'))
         self.days = np.unique([int(re.match(r"^(\d+)[a-zA-Z_]", f.name).group(1)) for f in pos_files])
 
         self.spinbox_max_days.setRange(0, len(self.days))
         self.spinbox_max_days.setValue(len(self.days))
+        self.spinbox_time.setRange(0, len(self.days)-1)
 
     def _on_load_data(self):
-        
+        """Load a single day stack of images and add them to the viewer."""
+
         data_path = Path(self.widget_data_directory.value)
 
         image_paths = natsorted(list(data_path.glob(f'{self.spinbox_time.value()}d_pos*')))
@@ -284,7 +283,9 @@ class MeristemWidget(QWidget):
             self.viewer.add_image(image, name=f"pos{ind+1}", colormap='gray', blending='additive')
 
     def _on_load_assembled_data(self):
-
+        """Load the stitched time series image and mask from the export directory.
+        Optionally load a manually fixed mask if `manual_option` box is ticked"""
+        
         export_folder = Path(self.widget_export_directory.value)
 
         if self.manual_option.value:
@@ -307,6 +308,9 @@ class MeristemWidget(QWidget):
         self.viewer.add_points(name='match_points',ndim=3)
 
     def _on_load_assemble_single(self):
+        """Load a single stitched image and mask for the selected day from the export directory.
+        Only time points that have been processed individually can be loaded this way."""
+
         day = self.spinbox_time.value()
 
         im_path = Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif')
@@ -323,6 +327,7 @@ class MeristemWidget(QWidget):
             self.viewer.add_labels(mask.astype(int), name=f"stitched_mask_d{day}")
     
     def _on_project_simple(self):
+        """Project the current stack of images using a simple maximum projection method."""
         
         for i in range(1,5):
             self.viewer.layers[f"pos{i}"].data = self.viewer.layers[f"pos{i}"].data.max(axis=0)
@@ -330,7 +335,9 @@ class MeristemWidget(QWidget):
         
 
     def _on_project_advanced(self):
-        
+        """Project all images in the selected directory and save them to the export directory.
+        The images are processed using a custom local projection."""
+
         if self.widget_export_directory.value == "No local path":
             QMessageBox.critical(self, "Error", "Please select an export directory")
             return
@@ -349,6 +356,7 @@ class MeristemWidget(QWidget):
                 skimage.io.imsave(Path(self.widget_export_directory.value).joinpath(f'{day}d_pos{ind+1}_proj.tif'), im)
 
     def _on_load_projection_single(self):
+        """Load a single projected image for the selected day and add it to the viewer."""
         
         day = self.spinbox_time.value()
         for i in range(1,5):
@@ -360,6 +368,8 @@ class MeristemWidget(QWidget):
             self.viewer.add_image(im_proj, name=f"pos{i}", colormap='gray', blending='additive')
 
     def _on_shift(self):
+        """Shift the images in a regular grid based on the arrangement of the positions and
+        the size of the images."""
 
         data = self.viewer.layers[f'pos{1}'].data
         if data.ndim == 3:
@@ -387,6 +397,7 @@ class MeristemWidget(QWidget):
             self.viewer.layers[f"pos{index[i]}"].refresh()
 
     def _on_shift_template(self):
+        """Shift the currently loaded FOVs using template matching to align them based on their content."""
 
         index = [x.value() for x in self.arrangement_boxes]
         images = [self.viewer.layers[f'pos{index[i]}'].data for i in range(4)]
@@ -399,10 +410,13 @@ class MeristemWidget(QWidget):
 
 
     def _on_save_shifts(self):
+        """Save currently set shifts to a CSV file in the export directory."""
+
         self.update_shifts()
         pd.DataFrame(self.shifts, columns=('y','x')).to_csv(Path(self.widget_export_directory.value).joinpath("shifts.csv"), index=False)
 
     def _on_load_shifts(self):
+        """"Load shifts from a CSV file in the export directory and apply them to the viewer layers."""
         
         shifts = pd.read_csv(Path(self.widget_export_directory.value).joinpath("shifts.csv")).values
         for i in range(4):
@@ -411,6 +425,7 @@ class MeristemWidget(QWidget):
         self.update_shifts()
         
     def _on_stitch_single(self):
+        """Stitch the currently loaded images based on the shifts and add the stitched image to the viewer."""
 
         self.update_shifts()
         translations = [{'y': self.shifts[i][0], 'x': self.shifts[i][1]} for i in range(4)]
@@ -420,6 +435,8 @@ class MeristemWidget(QWidget):
         self.viewer.add_image(fused, name=f"stitched_image_d{self.spinbox_time.value()}", colormap='gray', blending='additive')
 
     def _on_compute_single_mask(self):
+        """Compute segmentation mask for the current stitched image based on the selected diameter
+        and add it to the viewer as a labels layer."""
         
         if 'stitched_image' not in self.viewer.layers:
             QMessageBox.critical(self, "Error", "Please load stitched image first")
@@ -435,20 +452,25 @@ class MeristemWidget(QWidget):
             self.viewer.add_labels(mask.astype(np.uint16), name=f"stitched_mask_d{day}")
 
     def _on_compute_all_masks(self):
+        """Compute segmentation masks for all time points in the stitched image stack
+        and save them as a stack in the export directory."""
+
+        stitched_stack_path = Path(self.widget_export_directory.value).joinpath('stitched_image_stack.tif')
+        if not stitched_stack_path.exists():
+            QMessageBox.critical(self, "Error", f"Stitched image stack does not exist at {stitched_stack_path}. First stitch the images.")
+            return
         
         masks=[]
-        image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath('stitched_image_stack.tif'))
+        image = skimage.io.imread(stitched_stack_path)
         for im in image:
             masks.append(preprocess.compute_mask_single_time(image=im, diameter=self.spinbox_diameter.value()))
-        '''for day in days:
-            image = skimage.io.imread(Path(self.widget_export_directory.value).joinpath(f'{day}d_assembled.tif'))
-            masks.append(preprocess.compute_mask_single_time(image=image))'''
         
         skimage.io.imsave(
             Path(self.widget_export_directory.value).joinpath(f'stitched_mask_stack.tif'),
             np.stack(masks, axis=0).astype(np.uint16))
         
     def _on_load_mask_series(self):
+        """Load a mask stack from the export directory and add it to the viewer as a labels layer."""
 
         export_folder = Path(self.widget_export_directory.value)
 
@@ -468,10 +490,8 @@ class MeristemWidget(QWidget):
             QMessageBox.critical(self, "Error", f"Stitched mask stack does not exist at {export_folder.joinpath(f'{prefix}stitched_mask_stack.tif')}")
             return
 
-        
-
     def save_single_stitch(self):
-        """Save manually stitched image"""
+        """Save single time point manually stitched image"""
 
         to_save = self.viewer.layers[f"stitched_image_d{self.spinbox_time.value()}"].data
         
@@ -482,6 +502,7 @@ class MeristemWidget(QWidget):
             days=[self.spinbox_time.value()])
 
     def update_shifts(self):
+        """Update shifts based on the current affine translations of the viewer layers."""
         
         self.shifts = []
         for i in range(4):
@@ -489,12 +510,16 @@ class MeristemWidget(QWidget):
         self.shifts = [s - self.shifts[0] for s in self.shifts]
 
     def on_run_stitch(self):
+        """Stitch all projected images in the export directory and save the stitched image stack."""
 
-        #self.update_shifts()
         data_path = Path(self.widget_export_directory.value)
         pos = [1, 2, 3, 4]
         days = np.arange(0, self.spinbox_max_days.value())
         image_series = [[list(data_path.glob(f'{d}d_pos{p}_proj*'))[0] for p in pos] for d in days]
+        if not all([len(series) == 4 for series in image_series]):
+            QMessageBox.critical(self, "Error", "Not all days have 4 positions. Please check the data directory.")
+            return
+        
         cle = True
 
         index = [x.value() for x in self.arrangement_boxes]
@@ -505,18 +530,15 @@ class MeristemWidget(QWidget):
         
         all_fused = [np.squeeze(fused) for fused in all_fused]
         all_fused = preprocess.crop_images(all_fused)
-        #all_masks = preprocess.crop_images(all_masks)
-
-        '''reprocess.save_assembled_data(
-            export_folder=self.widget_export_directory.value, 
-            assembled_images=all_fused, assembled_masks=all_masks)'''
         
         preprocess.save_assembled_data_stack(
             export_folder=Path(self.widget_export_directory.value), 
             assembled_images=all_fused)
         
     def _on_init_ref_points(self):
-        # add points at each corner of the stitched image at 30% from borders for each time point in the t,y,x stack
+        """Add reference points at each corner of the stitched image at 30% from
+        borders for each time point in the t,y,x stack"""
+
         if 'stitched_image' not in self.viewer.layers:
             QMessageBox.critical(self, "Error", "Please load stitched image first")
             return
@@ -537,18 +559,22 @@ class MeristemWidget(QWidget):
         self.viewer.layers['match_points'].size = 30
         
     def _on_save_ref_points(self):
+        """Save the reference points to a CSV file in the export directory."""
         
         export_folder = Path(self.widget_export_directory.value)
         self.ref_points = self.viewer.layers['match_points'].data
         preprocess.save_reference_points(export_folder, self.ref_points)
 
     def _on_load_ref_points(self):
+        """Load reference points from a CSV file in the export directory and add them to the viewer."""
         
         export_folder = Path(self.widget_export_directory.value)
         self.ref_points = pd.read_csv(export_folder.joinpath('match_points.csv')).values
         self.viewer.layers['match_points'].data = self.ref_points
 
     def warp(self):
+        """Compute the warping of all time points given the reference points in order 
+        to align all time points to last time point. Warp both image and mask and save as stacks."""
 
         if 'match_points' not in self.viewer.layers:
             QMessageBox.critical(self, "Error", "Please add reference points first")
@@ -565,9 +591,9 @@ class MeristemWidget(QWidget):
         preprocess.save_warped_stacks(export_folder=export_folder, warped_image_list=warp_series, warped_mask_list=warp_mask_series)
         self.viewer.add_image(np.stack(warp_series, axis=0)) 
         self.viewer.add_labels(np.stack(warp_mask_series, axis=0).astype(np.uint16), name='warped_mask') 
-        #self.viewer.layers['warped_mask'].events.selected_label.connect(self._on_select_warped_label)
 
     def _on_load_warped_data(self):
+        """Load warped image and mask stack from the export directory and add them to the viewer."""
 
         if self.manual_option.value:
             prefix = 'manual_'
@@ -580,6 +606,8 @@ class MeristemWidget(QWidget):
         self.viewer.add_labels(masks_warped.astype(np.uint16), name='warped_mask')
 
     def _on_select_warped_label(self, event):
+        """Triggered upon selecting a cell in the warped mask layer. Creates a single cell 
+        mask of the same label from the stitched mask. Sets the mode to draw for manual split."""
         
         selected_label = self.viewer.layers['warped_mask'].selected_label
         fix_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0], dtype=np.uint16)
@@ -588,8 +616,10 @@ class MeristemWidget(QWidget):
         self._reset_fix_mask(mask=fix_mask)
         self.set_split_mode_draw() 
         
-
     def _on_init_manual_fix(self):
+        """Initialize the manual fix mode by loading the warped mask and stitched mask layers,
+        and setting the mode to split or merge based on the choice of manual split type. Connects
+        the warped_mask to _on_select_warped_label."""
         
         if 'warped_mask' not in self.viewer.layers:
             self._on_load_warped_data()
@@ -604,6 +634,7 @@ class MeristemWidget(QWidget):
             self.set_merge_mode_draw()
 
     def _reset_fix_mask(self, mask=None):
+        """Reset the fix mask layer to mask or an empty mask if none is provided."""
 
         if 'stitched_mask' not in self.viewer.layers:
             QMessageBox.critical(self, "Error", "Please load stitched mask first")
@@ -622,10 +653,12 @@ class MeristemWidget(QWidget):
 
     def unselect_all_layers(self):
         """Unselect all layers in the viewer."""
+
         for layer in self.viewer.layers:
             layer.selected = False
 
     def set_split_mode_draw(self):
+        """Set the viewer to be ready to split a single cell label."""
 
         self.unselect_all_layers()
 
@@ -639,6 +672,7 @@ class MeristemWidget(QWidget):
         self.viewer.layers.selection.active = self.viewer.layers['fix_mask']
 
     def set_split_mode_select(self):
+        """Set the viewer to be ready to select a single cell label for splitting."""
 
         self.viewer.layers['warped_mask'].visible = True
         self.viewer.layers['warped_image'].visible = True
@@ -649,6 +683,9 @@ class MeristemWidget(QWidget):
         self.viewer.layers.selection.active = self.viewer.layers['warped_mask']
 
     def set_merge_mode_draw(self):
+        """Set the viewer to be ready to merge multiple cell labels into one by
+        drawing over them with the fix mask layer."""
+
         self.viewer.layers['fix_mask'].mode = 'paint'
         self.viewer.layers['fix_mask'].brush_size = 2 
         self.viewer.layers['fix_mask'].refresh()
@@ -663,6 +700,8 @@ class MeristemWidget(QWidget):
 
 
     def _on_update_after_manual_split(self):
+        """Assign labels to the two new splits, expand them to fill space up to 
+        the size of the initial mask, and re-warp the mask to fix the warped mask."""
 
         original_mask = np.zeros_like(self.viewer.layers['stitched_mask'].data[0])
         sel_label = self.viewer.layers['warped_mask'].selected_label
@@ -690,6 +729,7 @@ class MeristemWidget(QWidget):
         self.set_split_mode_select()
 
     def _on_update_after_manual_merge(self):
+        """Merge the selected labels in the warped mask and stitched masks."""
 
         mask_t = self.viewer.layers['warped_mask'].data[self.viewer.dims.current_step[0]]
         mask_stitched_t = self.viewer.layers['stitched_mask'].data[self.viewer.dims.current_step[0]]
