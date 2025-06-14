@@ -9,7 +9,12 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-A plugin to track plant meristem cells.
+This napari plugin provides a set of tools to process 3D, tiled, time-lapse fluorescence microscopy images of plant meristem cells. It allows to perform the following steps:
+- projection: 3D images stacks are projected using a local pixel-wise projection method. Acquisition generates 3D stacks that are not "flat", i.e. cells are in focus at different z-positions. The method developed here allows to locally detect the per-pixel in focus plane and only project the surrounding planes.
+- stitching: multiple images can be stitched together using a combination of local template matching and the multiview-stitcher package. This is particularly useful for tiles acquired in a manual way and whose exact positions are not known.
+- segmentation: images are then segmented using Cellpose 4 which is particularly adapted to segment the cells of different sizes present in the images.
+- warping: in long time lapse experiments with only few time points, the cells can move significantly between time points. The plugin allows to warp the time points to align with the last time point. This simplifies the tracking steps.
+- tracking: the trajectories of specific cells or groups of cells can be reconstructed by manually constructing cell division trees. As only few cells and time-points are present, such a manual, 100% accurate approach is faster than correcting an automated tracking.
 
 ----------------------------------
 
