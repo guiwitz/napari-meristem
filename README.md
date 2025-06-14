@@ -9,7 +9,7 @@
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-This napari plugin provides a set of tools to process 3D, tiled, time-lapse fluorescence microscopy images of plant meristem cells. It allows to perform the following steps:
+This napari plugin provides a set of tools to process 3D, tiled, time-lapse fluorescence microscopy images of plant meristem cells. It has been developed for the Raissig Lab of the University of Bern and designed to process data from specific experiments. It is therefore not intended at the moment as a general purpose software but might contain tools that could be used in a broder context (open an issue or get in touch with the plugin author in case of questions). The plugin allows to perform the following steps:
 - projection: 3D images stacks are projected using a local pixel-wise projection method. Acquisition generates 3D stacks that are not "flat", i.e. cells are in focus at different z-positions. The method developed here allows to locally detect the per-pixel in focus plane and only project the surrounding planes.
 - stitching: multiple images can be stitched together using a combination of local template matching and the multiview-stitcher package. This is particularly useful for tiles acquired in a manual way and whose exact positions are not known.
 - segmentation: images are then segmented using Cellpose 4 which is particularly adapted to segment the cells of different sizes present in the images.
@@ -20,13 +20,25 @@ This napari plugin provides a set of tools to process 3D, tiled, time-lapse fluo
 
 ## Installation
 
-Create a new conda environment with Python 3.10 or later, and install the plugin
+Create a new conda environment with Python 3.12 or later, and install the plugin
 using pip:
 
 ```bash
 conda create -n napari-meristem python=3.10 napari pyqt
 conda activate napari-meristem
 pip install git+https://github.com/guiwitz/napari-meristem.git
+```
+
+The projection algorithm requires the GPU based [pyclesperanto](https://github.com/clEsperanto/pyclesperanto) package which works with a wide range of GPUs (no NVIDIA GPU required). For it to work you need to install in addition in your environment, on Mac OS:
+
+```bash
+conda install -c conda-forge ocl_icd_wrapper_apple
+```
+ 
+and on Linux:
+
+```bash
+conda install -c conda-forge ocl-icd-system
 ```
 
 # Usage
@@ -36,8 +48,7 @@ To use this plugin, simply launch napari from the command line:
 conda activate napari-meristem
 napari
 ```
-The widget can be found in the "Plugins" menu under "napari-meristem".
-
+The widgets can be found in the "Plugins" menu under "napari-meristem".
 
 ## License
 
