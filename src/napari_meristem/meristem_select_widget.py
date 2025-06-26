@@ -86,19 +86,21 @@ class MeristemAnalyseWidget(QWidget):
         self.mtrack_group.glayout.addWidget(self.track_sequence_list, 3, 1, 1, 1)
         self.track_sequence_list.setToolTip("List of track parts")
 
+        self.current_track_identity = create_widget(value='None', label='Current identity')
+        self.mtrack_group.glayout.addWidget(self.current_track_identity.native, 4, 0, 1, 2)
+
         self.btn_set_mother_daughter = QPushButton('Set mother-daughter')
-        self.mtrack_group.glayout.addWidget(self.btn_set_mother_daughter, 4, 0, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_set_mother_daughter, 5, 0, 1, 1)
         self.btn_set_mother_daughter.setToolTip("Set mother-daughter relationship for the selected cells")
         
-
         self.btn_remove_track_position = QPushButton('Remove track position')
-        self.mtrack_group.glayout.addWidget(self.btn_remove_track_position, 4, 1, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_remove_track_position, 5, 1, 1, 1)
 
         self.btn_export_tracks = QPushButton('Export tracks')
-        self.mtrack_group.glayout.addWidget(self.btn_export_tracks, 5, 0, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_export_tracks, 6, 0, 1, 1)
         self.btn_export_tracks.setToolTip("Export tracks to a file")
         self.btn_import_tracks = QPushButton('Import tracks')
-        self.mtrack_group.glayout.addWidget(self.btn_import_tracks, 5, 1, 1, 1)
+        self.mtrack_group.glayout.addWidget(self.btn_import_tracks, 6, 1, 1, 1)
         self.btn_import_tracks.setToolTip("Import tracks from a file")
 
         # Set identities
@@ -288,7 +290,10 @@ class MeristemAnalyseWidget(QWidget):
         self.track_sequence_list.clear()
 
         if len(selected_items) == 1:
-        
+            
+            # get identity
+            self.current_track_identity.value = self.current_track[self.current_track.track_id == selected_track_id].identity.values[0]
+            
             # get the times for the selected track
             if self.current_track is not None:
                 track_times = self.current_track[self.current_track.track_id == selected_track_id].t
@@ -315,6 +320,8 @@ class MeristemAnalyseWidget(QWidget):
             
             self.track_list.clearSelection()
             self.track_list.setCurrentItem(self.track_list.findItems(str(self.track_id), Qt.MatchExactly)[0])
+
+            self.current_track_identity.value = 'None'
 
     def _on_mother_daughter(self):
         """Set mother-daughter relationship for the selected cells. Adds entry to graph."""
@@ -376,6 +383,8 @@ class MeristemAnalyseWidget(QWidget):
             self.track_sequence_list.clear()
             self.track_list.takeItem(self.track_list.row(selected_items[0]))
             self.remove_track_from_graph(selected_track)
+            self.current_track_identity.value = 'None'
+
 
             self.viewer.layers['manual_track'].data = track
             self.viewer.layers['manual_track'].graph = self.graph
@@ -474,6 +483,7 @@ class MeristemAnalyseWidget(QWidget):
         
         self.viewer.layers['manual_track'].data = self.current_track[['track_id', 't', 'y', 'x']].values
         self.viewer.layers['manual_track'].graph = self.graph
+        #self.update_track_features()
         self.viewer.layers['manual_track'].refresh()
 
     def _on_update_complex_list(self):
@@ -513,6 +523,13 @@ class MeristemAnalyseWidget(QWidget):
         for cell_id in selected_cell_ids:
             self.current_track.loc[self.current_track['track_id'] == cell_id, 'identity'] = identity
 
+    def update_track_features(self):
+
+        identity = self.current_track['identity'].values
+        features = {
+            'identity': identity
+        }
+        self.viewer.layers['manual_track'].features = features
 
     def _on_export_identities(self):
         """Export identities to a file."""
