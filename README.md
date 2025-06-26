@@ -24,7 +24,7 @@ Create a new conda environment with Python 3.12 or later, and install the plugin
 using pip:
 
 ```bash
-conda create -n napari-meristem python=3.10 napari pyqt
+conda create -n napari-meristem python=3.10 napari pyqt pyclesperanto
 conda activate napari-meristem
 pip install git+https://github.com/guiwitz/napari-meristem.git
 ```
