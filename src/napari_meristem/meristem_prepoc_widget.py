@@ -36,9 +36,12 @@ class MeristemWidget(QWidget):
         self.tabs.add_named_tab('Data preproc', self.data_selection_group.gbox)
 
         self.widget_data_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose data directory"})
+        self.widget_data_directory.native.findChild(QPushButton).setText("Choose data directory")
         self.data_selection_group.glayout.addWidget(self.widget_data_directory.native, 0, 0, 1, 2)
+    
 
         self.widget_export_directory = create_widget(value=Path("No local path"), options={"mode": "d", "label": "Choose export directory"})
+        self.widget_export_directory.native.findChild(QPushButton).setText("Choose export directory")
         self.data_selection_group.glayout.addWidget(self.widget_export_directory.native, 1, 0, 1, 2)
 
         self.btn_load_data = QPushButton("Load single day stack")
