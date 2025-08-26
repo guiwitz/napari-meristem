@@ -386,7 +386,7 @@ def get_origin_cells(all_trees):
     
     return num_origins, origin_cells
 
-def guard_genealogy(all_trees):
+def guard_genealogy(all_trees, cell_name='guard'):
     """Given a dictionary of all trees, this function finds the guard cells and 
     returns their genealogy as a numpy array. The function assumes that there is
     only one guard cell
@@ -404,7 +404,7 @@ def guard_genealogy(all_trees):
         A numpy array containing the track_ids of the guard cell and its ancestors.
 
     """
-    guard_tree = [[x.track_id for x in list(val.ancestors)]+[val.track_id] for key, val in all_trees.items() if val.identity == 'guard']
+    guard_tree = [[x.track_id for x in list(val.ancestors)]+[val.track_id] for key, val in all_trees.items() if val.identity == cell_name]
     if len(guard_tree) == 0:
         warn('No guard cell found in the track')
         return None
