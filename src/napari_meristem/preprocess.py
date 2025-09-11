@@ -136,6 +136,10 @@ def get_max_plane_map_cle_refined(im):
     grid_z = grid_z.reshape(grid_x.shape)
     grid_z = grid_z.T
 
+    # ensure indices are in bounds
+    grid_z[grid_z < 0] = 0
+    grid_z[grid_z >= im.shape[0]] = im.shape[0]-1
+
     return grid_z
 
 def create_proj(image, cle=False):
