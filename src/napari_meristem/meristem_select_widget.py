@@ -367,6 +367,8 @@ class MeristemAnalyseWidget(QWidget):
             self.viewer.layers['manual_track'].graph = self.graph
             self.viewer.layers['manual_track'].refresh()
 
+            self.update_identity_layer()
+
 
     def _on_remove_track(self):
         """Remove the selected track. Ensure that mother-daughter relationships are updated accordingly."""
@@ -389,6 +391,8 @@ class MeristemAnalyseWidget(QWidget):
             self.viewer.layers['manual_track'].data = track
             self.viewer.layers['manual_track'].graph = self.graph
             self.viewer.layers['manual_track'].refresh()
+
+            self.update_identity_layer()
 
     def remove_track_from_graph(self, remove_id):
         """Remove elements of the graph that are related to the removed track."""
@@ -486,6 +490,30 @@ class MeristemAnalyseWidget(QWidget):
         #self.update_track_features()
         self.viewer.layers['manual_track'].refresh()
 
+        self.update_track_sequence_list()
+
+        self.update_identity_layer()
+
+    def update_identity_layer(self):
+
+        features = {'identity': self.current_track['identity'].values}
+        text = {
+            'string': '{identity}',
+            'size': 8,
+            'color': 'red',
+            'translation': np.array([0, -5, 0]),
+        }
+        if 'identities' not in self.viewer.layers:
+            self.viewer.add_points(self.current_track[['t','y', 'x']].values,
+                                   name='identities', size=2, face_color='red', border_color='black',
+                                   features=features, text=text)
+        else:
+            self.viewer.layers['identities'].data = self.current_track[['t','y', 'x']].values
+            self.viewer.layers['identities'].features = features
+            self.viewer.layers['identities'].text = text
+            self.viewer.layers['identities'].refresh()
+
+
     def _on_update_complex_list(self):
         """Update the list of complexes."""
         
@@ -522,6 +550,8 @@ class MeristemAnalyseWidget(QWidget):
         selected_cell_ids = [int(item.text()) for item in selected_cells]
         for cell_id in selected_cell_ids:
             self.current_track.loc[self.current_track['track_id'] == cell_id, 'identity'] = identity
+
+        self.update_identity_layer()
 
     def update_track_features(self):
 
